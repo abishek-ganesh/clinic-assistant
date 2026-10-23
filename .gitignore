@@ -1,0 +1,21 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Tools
+.vercel/
+supabase/.temp/
+supabase/.branches/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
