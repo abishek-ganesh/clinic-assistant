@@ -32,6 +32,11 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.isort]
+# The repo's supabase/ folder (migrations) is not the supabase package: without this, import
+# sorting depends on which files happen to be in that folder.
+known-third-party = ["supabase"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
