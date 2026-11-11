@@ -88,6 +88,11 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def hash_class_code(code: str) -> str:
+    """sha256 hex of the class code. Case and outer spaces are ignored so typing it is forgiving."""
+    return hashlib.sha256(code.strip().lower().encode()).hexdigest()
+
+
 def hash_ip(ip: str) -> str:
     """Keyed hash of a client IP, so usage_log can count per address without storing addresses."""
     secret = get_settings().supabase_secret_key
@@ -125,6 +130,25 @@ async def authorize_demo(ip: str) -> AccessDecision:
     db = await get_db()
     result = await db.rpc("authorize_demo_request", {"p_ip_hash": hash_ip(ip)}).execute()
     return AccessDecision.model_validate(result.data)
+
+
+async def request_token(email: str, class_code: str) -> tuple[str | None, dict]:
+    """Mint a token for a student who knows the class code. Returns (token, database result).
+
+    The token is None unless result["issued"] is true; result["reason"] says why not.
+    """
+    token, token_hash, prefix = mint_token()
+    db = await get_db()
+    result = await db.rpc(
+        "request_token",
+        {
+            "p_email": email,
+            "p_code_hash": hash_class_code(class_code),
+            "p_token_hash": token_hash,
+            "p_token_prefix": prefix,
+        },
+    ).execute()
+    return (token if result.data["issued"] else None), result.data
 
 
 def estimate_cost(model: str | None, input_tokens: int, output_tokens: int) -> float:

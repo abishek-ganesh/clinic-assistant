@@ -276,6 +276,19 @@ textarea::placeholder { color: #6b7790; }
 }
 .ask-button:hover { background: var(--navy-deep); }
 
+/* The quieter partner of .ask-button: same size and shape, outline instead of fill */
+.outline-button {
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--navy);
+  border-radius: var(--radius-small);
+  background: var(--white);
+  color: var(--navy);
+  font-family: var(--font-display);
+  font-weight: 700;
+  cursor: pointer;
+}
+.outline-button:hover { background: var(--tint); }
+
 .chips {
   display: flex;
   flex-wrap: wrap;

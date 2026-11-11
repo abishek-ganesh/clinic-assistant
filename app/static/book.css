@@ -146,18 +146,6 @@
   margin-top: var(--space-5);
 }
 
-/* The quieter partner of .ask-button: same size and shape, outline instead of fill */
-.outline-button {
-  padding: var(--space-2) var(--space-5);
-  border: 1px solid var(--navy);
-  border-radius: var(--radius-small);
-  background: var(--white);
-  color: var(--navy);
-  font-family: var(--font-display);
-  font-weight: 700;
-  cursor: pointer;
-}
-.outline-button:hover { background: var(--tint); }
 .proposal-actions .outline-button { padding: var(--space-2) var(--space-6); font-size: 1.05rem; }
 
 .proposal-why {

@@ -33,6 +33,7 @@ from app.openai_compat import (
 )
 from app.stats_routes import router as stats_router
 from app.thresholds import MAX_QUESTION_CHARS
+from app.token_routes import router as token_router
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -45,6 +46,7 @@ app = FastAPI(title="Family Clinic Assistant")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(booking_router)  # GET /book, POST /api/book
 app.include_router(stats_router)  # GET /stats, GET /api/stats
+app.include_router(token_router)  # GET /token, POST /api/token
 # The MCP server at /mcp: plain routes, so it needs no startup hook (see app/mcp_server.py)
 app.router.routes.extend(mcp_routes)
 

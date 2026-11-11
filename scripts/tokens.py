@@ -4,6 +4,9 @@ uv run python scripts/tokens.py mint --label "Ada Lovelace" --email ada@example.
 uv run python scripts/tokens.py mint --roster roster.csv > ~/tokens.csv   (columns: label,email)
 uv run python scripts/tokens.py list
 uv run python scripts/tokens.py revoke PREFIX_OR_LABEL
+uv run python scripts/tokens.py class-code new        (prints a new code; share it in Slack)
+uv run python scripts/tokens.py class-code set CODE   (use a code of your own)
+uv run python scripts/tokens.py class-code close      (stop the /token page issuing tokens)
 
 A plain token is printed once, at mint time. Only its hash is stored, so it cannot be shown again.
 """
@@ -11,6 +14,7 @@ A plain token is printed once, at mint time. Only its hash is stored, so it cann
 import argparse
 import asyncio
 import csv
+import secrets
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.access import mint_token  # noqa: E402
+from app.access import hash_class_code, mint_token  # noqa: E402
 from app.db import get_db  # noqa: E402
 
 
@@ -115,6 +119,30 @@ async def cmd_revoke(args: argparse.Namespace) -> None:
     print(f"Revoked {token['label']} ({token['token_prefix']})")
 
 
+def new_class_code() -> str:
+    """A code that is easy to read aloud and far too long to guess: clinic-xxxx-xxxx-xxxx."""
+    alphabet = "abcdefghjkmnpqrstuvwxyz23456789"  # no look-alikes such as l/1 or o/0
+    groups = ["".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)]
+    return "clinic-" + "-".join(groups)
+
+
+async def cmd_class_code(args: argparse.Namespace) -> None:
+    """Set or clear the code the /token page asks for. Only its hash is stored."""
+    if args.action == "set" and not args.code:
+        sys.exit("class-code set needs the code: class-code set CODE")
+    code = {"new": new_class_code(), "set": args.code, "close": None}[args.action]
+    db = await get_db()
+    value = hash_class_code(code) if code else None
+    await db.table("app_settings").upsert({"key": "class_code_hash", "value": value}).execute()
+    if args.action == "new":
+        print(code)
+        print("New class code set. Tokens already issued keep working.", file=sys.stderr)
+    elif args.action == "set":
+        print("Class code set. Tokens already issued keep working.", file=sys.stderr)
+    else:
+        print("Token requests are closed. Tokens already issued keep working.", file=sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Mint, list and revoke student tokens.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -132,6 +160,11 @@ def main() -> None:
     revoke_parser = commands.add_parser("revoke", help="turn off one token")
     revoke_parser.add_argument("target", metavar="PREFIX_OR_LABEL")
     revoke_parser.set_defaults(run=cmd_revoke)
+
+    code_parser = commands.add_parser("class-code", help="set the code the /token page asks for")
+    code_parser.add_argument("action", choices=["new", "set", "close"])
+    code_parser.add_argument("code", nargs="?")
+    code_parser.set_defaults(run=cmd_class_code)
 
     args = parser.parse_args()
     asyncio.run(args.run(args))

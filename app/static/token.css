@@ -1,0 +1,98 @@
+/* Token page. Loaded after styles.css: only what this page adds. */
+
+/* Step 1: three short facts side by side */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+.fact { padding: var(--space-4) var(--space-5); border-top: 6px solid var(--navy); }
+.fact p + p { margin-top: var(--space-2); font-size: 0.9rem; }
+
+code { font-family: var(--font-mono); font-size: 0.9em; }
+
+/* Step 2: the form */
+.token-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4) var(--space-5);
+  max-width: 44rem;
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+}
+.field { display: grid; gap: var(--space-2); }
+.field input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: var(--paper);
+  font: inherit;
+  color: inherit;
+}
+.field input:focus { outline: 3px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.field input::placeholder { color: #6b7790; }
+.form-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.ask-button[aria-disabled="true"] { opacity: 0.6; cursor: progress; }
+.token-form + .error { max-width: 44rem; }
+
+/* Step 3: the token and the sample */
+.token-card {
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: 6px solid var(--accent);
+}
+.token-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+.token-value {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-small);
+  background: var(--accent-tint);
+  color: var(--navy-deep);
+  font-size: 0.95rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.token-detail { margin-top: var(--space-3); color: var(--slate); font-size: 0.9rem; }
+
+.sample-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+.sample {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-4) var(--space-5);
+  overflow: auto;
+  background: var(--navy-deep);
+  color: var(--code-fg);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.sample-note { margin-top: var(--space-3); max-width: 44rem; color: var(--slate); font-size: 0.9rem; }
+
+@media (max-width: 56rem) {
+  .facts { grid-template-columns: 1fr; }
+}
+@media (max-width: 40rem) {
+  .token-form { grid-template-columns: 1fr; padding: var(--space-4); }
+  .form-row, .token-row { flex-direction: column; align-items: stretch; }
+  .sample { padding: var(--space-4); }
+}

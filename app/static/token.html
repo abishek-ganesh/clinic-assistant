@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Get an API token: Family Clinic Assistant</title>
+  <meta name="description" content="Request a class token and call a model from your own code with the openai package. For students of the bootcamp.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23003087'/%3E%3Cpath d='M13 7h6v6h6v6h-6v6h-6v-6H7v-6h6z' fill='%23B9D9EB'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Schibsted+Grotesk:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/token.css">
+  <script src="/static/token.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#email">Skip to the token form</a>
+
+  <header class="site-header">
+    <div class="wrap header-row">
+      <div class="brand">
+        <p class="eyebrow">Class endpoint</p>
+        <h1>Family Clinic Assistant</h1>
+        <div class="header-rule"></div>
+        <p class="tagline">Call a model from your own code. One token per student, with its own limits.</p>
+      </div>
+      <p class="notice">For students of the bootcamp</p>
+    </div>
+    <nav class="wrap tabs" aria-label="Pages">
+      <a class="tab" href="/">Ask the handbook</a>
+      <a class="tab" href="/book">Book an appointment</a>
+      <a class="tab" href="/stats">Usage stats</a>
+      <a class="tab" href="/token" aria-current="page">Get an API token</a>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section class="step" aria-labelledby="title-what">
+      <div class="step-title">
+        <span class="step-num" aria-hidden="true">1</span>
+        <h2 id="title-what">What a token is for</h2>
+      </div>
+      <p class="step-note">The other pages on this site work without one. You need a token only when your own code calls a model through the class endpoint: in a notebook, a script or an app you are building.</p>
+
+      <div class="facts">
+        <div class="fact card">
+          <p class="eyebrow">Same shape as OpenAI</p>
+          <p>The endpoint speaks OpenAI's chat completions format, so the <code>openai</code> package works unchanged. You set two values: the address and your token.</p>
+        </div>
+        <div class="fact card">
+          <p class="eyebrow">Your own allowance</p>
+          <p>Each token gets 20 requests a minute and 300 a day. The whole class shares one monthly budget, so a loop that runs away hurts everyone.</p>
+        </div>
+        <div class="fact card">
+          <p class="eyebrow">Treat it like a password</p>
+          <p>Keep it in an environment variable, never in code you commit. If it leaks, come back here and request a new one: the old one stops working.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="title-request">
+      <div class="step-title">
+        <span class="step-num" aria-hidden="true">2</span>
+        <h2 id="title-request">Request your token</h2>
+      </div>
+      <p class="step-note">Enter your email and the class code from the class Slack. No email is sent: your token appears on this page, once.</p>
+
+      <form id="token-form" class="token-form card" novalidate>
+        <div class="field">
+          <label class="eyebrow" for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" maxlength="254"
+                 placeholder="you@example.com" required>
+        </div>
+        <div class="field">
+          <label class="eyebrow" for="class-code">Class code</label>
+          <input id="class-code" name="class_code" type="text" autocomplete="off" autocapitalize="none"
+                 spellcheck="false" maxlength="100" placeholder="from the class Slack" required>
+        </div>
+        <div class="form-row">
+          <p class="ask-help">Asking again with the same email replaces your earlier token.</p>
+          <button id="submit-button" class="ask-button" type="submit">Get my token</button>
+        </div>
+      </form>
+
+      <div id="error" class="error card" role="alert" hidden>
+        <p id="error-title" class="error-title"></p>
+        <p id="error-help" class="error-help"></p>
+      </div>
+    </section>
+
+    <section class="step step-last step-ghost" id="step-token" aria-labelledby="title-token">
+      <div class="step-title">
+        <span class="step-num" aria-hidden="true">3</span>
+        <h2 id="title-token">Your token</h2>
+      </div>
+      <p id="token-note" class="step-note">It will appear here with a code sample you can paste into a notebook.</p>
+
+      <div id="issued" aria-live="polite" hidden>
+        <div class="token-card card">
+          <p class="eyebrow">Shown once. Copy it now.</p>
+          <div class="token-row">
+            <code id="token-value" class="token-value" tabindex="0"></code>
+            <button id="copy-token" class="ask-button" type="button">Copy</button>
+          </div>
+          <p id="token-detail" class="token-detail"></p>
+        </div>
+
+        <div class="sample-head">
+          <p class="eyebrow">Try it</p>
+          <button id="copy-sample" class="outline-button" type="button">Copy the code</button>
+        </div>
+        <pre id="sample" class="sample" tabindex="0"></pre>
+        <p class="sample-note">Install the package first with <code>pip install openai</code>. Settings such as <code>temperature</code> are accepted and ignored, and the response tells you which ones.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p class="wrap">Tokens are for coursework only and can be turned off at any time. Only a hash of each token is stored, so a lost token cannot be shown again.</p>
+  </footer>
+</body>
+</html>

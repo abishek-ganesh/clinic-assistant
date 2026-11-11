@@ -374,6 +374,30 @@ Two definitions worth knowing when reading the page:
 
 The page (its header reads "Observability") is the course's first look at that topic, so each number has one sentence saying what it means and why an engineer watches it. Charts are plain HTML and CSS with no chart library: the daily chart is a row of `div` bars with a table of the same numbers behind a toggle, and the two breakdowns are tables with a bar in one column.
 
+## Self-service class tokens
+
+The class endpoint needs a token per student. Students get their own on the `/token` page instead of the instructor handing them out.
+
+```
+POST /api/token  {"email": "...", "class_code": "..."}
+   |-- validate the email shape and the code's length
+   |-- authorize_demo(ip)        the shared per-visitor limit, kill switch, spend cap
+   |-- mint a token in Python, hash the class code
+   |-- request_token() in Postgres:
+   |       no class code set   -> signups_closed (403)
+   |       hash does not match -> wrong_code (403)
+   |       otherwise           -> turn off this email's earlier self-service token,
+   |                              store the new token's hash
+   |-- usage_log row (surface "token", outcome "issued" or "refused")
+   v
+{"token": "sk-bootcamp-...", "email": "...", "replaced": false}   shown once, never cached
+```
+
+- **The class code is the proof, not the email.** No email is sent, so anyone with the code can type any address. The address is a label: it shows who a token belongs to and lets a second request replace the first. The instructor shares the code in the class Slack and can change it or close sign-ups with `scripts/tokens.py class-code`.
+- **Only the code's hash is stored**, in `app_settings.class_code_hash`. The check happens inside Postgres, so the hash never leaves the database.
+- **Guessing is slow.** A wrong code is logged with an outcome that counts toward the visitor's ten requests a minute, and a generated code has about 59 bits of randomness.
+- **Asking again replaces, but only self-service tokens.** A token the instructor minted by hand has `self_service = false` and is never turned off by the form.
+
 ## What exists today
 
 | Piece | File | What it does |
@@ -404,9 +428,9 @@ The page (its header reads "Observability") is the course's first look at that t
 | Table | Holds | Notes |
 |---|---|---|
 | `handbook_chunks` | handbook passages and their 512-dim vectors | `embedding_model` is recorded per row: vectors from two models are not comparable |
-| `student_tokens` | one row per student API token | only the sha256 hash is stored; the token is shown once when minted |
-| `usage_log` | one row per request on any surface | `surface` is `endpoint`, `demo`, `booking`, `mcp` or `eval`. Tokens, latency, status, outcome, ignored params, raw judgments, estimated cost |
-| `app_settings` | key/value switches | `kill_switch`, `spend_cap_usd` (monthly), `demo_rpm_per_ip`, `booking_max_per_ip_per_day` (5) |
+| `student_tokens` | one row per student API token | only the sha256 hash is stored; the token is shown once when minted. `self_service` marks tokens requested on the `/token` page |
+| `usage_log` | one row per request on any surface | `surface` is `endpoint`, `demo`, `booking`, `mcp`, `eval` or `token`. Tokens, latency, status, outcome, ignored params, raw judgments, estimated cost |
+| `app_settings` | key/value switches | `kill_switch`, `spend_cap_usd` (monthly), `demo_rpm_per_ip`, `booking_max_per_ip_per_day` (5), `class_code_hash` (null closes token sign-ups) |
 | `providers` | three fictional providers: Dr. Patel and Dr. Lee (Main Street), Dr. Kim (Riverside) | |
 | `provider_blocks` | the weekly schedule: provider, weekday, visit type, start, end, slot length | blocks never overlap for a provider, so slots cannot overlap |
 | `clinic_closures` | holiday closures and early closes from the handbook | listed through November 2027; add rows to extend |
@@ -420,9 +444,10 @@ What each surface writes to `usage_log`:
 | `demo` | question on the Ask page | `answered`, `declined`, `emergency`, `denied`, `error` |
 | `booking` | agent turn (tokens summed over its model calls) | `replied`, `proposed`, `booked`, `refused`, `step_limit`, `denied`, `error` |
 | `mcp` | tool call (the tool name is in `detail`) | `tool_call`, `denied`, `error` |
+| `token` | token request (the reason is in `detail`) | `issued`, `refused`, `denied`, `error` |
 | `eval` | eval question | the pipeline's decision, or `error` |
 
-Seven Postgres functions do the heavy lifting next to the data:
+Eight Postgres functions do the heavy lifting next to the data (the eighth, `request_token`, is described under "Self-service class tokens"):
 
 - **`match_chunks(query_embedding, match_count)`** returns the nearest passages with cosine similarity (1 means same direction, 0 means unrelated). An HNSW index backs it.
 - **`authorize_request(token_hash)`** allows or denies a class-endpoint request in one round trip, cheapest checks first: kill switch, unknown token, revoked token, monthly spend cap, per-minute limit, per-day limit. Days and months follow class time (Eastern).

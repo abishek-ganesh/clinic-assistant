@@ -11,6 +11,7 @@ const SURFACES = {
   endpoint: "Class endpoint",
   booking: "Booking agent",
   mcp: "MCP server",
+  token: "Token page",
   eval: "CI eval",
 };
 

@@ -279,6 +279,12 @@ Three thin slices built on Nov 11, 2026, one per later stage of the course: a bo
 - **Why:** the page has one bar chart and two ranked lists. Bars are `div`s with a height; ranked lists are tables with a bar cell. That is a small amount of JavaScript students can read, no build step, no third-party script, and the tables are their own text alternative. Bars use one color throughout: the rows are named, so color has nothing to add.
 - **Design:** same header, tabs, tokens, spacing scale, `.card` and `.eyebrow` as the Ask page. `stats.css` holds only what this page adds.
 
+### D64. Students request their own token with a class code
+- **Considered:** the instructor minting one token per student from a roster and sending each by direct message; an open form that gives a token to any email; an allowlist of roster emails; emailing the token to prove the address.
+- **Why:** enrollment changes until the first week, so a roster is always out of date. An open form is an open endpoint. An allowlist is the roster again. Sending email adds a provider and a subprocessor for a problem the class code already solves: the code is shared in the class Slack, so knowing it is the proof of being in the class.
+- **Consequence:** the email is a label, not an identity. Anyone with the code can request a token for any address, and requesting one for a classmate's address turns off that classmate's self-service token. That is mischief, not a breach, and the fix is to request again. Tokens the instructor minted by hand are never replaced by the form.
+- **Controls:** only the code's hash is stored; wrong guesses count toward the per-visitor limit; the instructor can change the code or close sign-ups in one command; every token keeps its own per-minute and per-day limits and can be revoked.
+
 ## What broke and how we fixed it
 
 ### Phase 0

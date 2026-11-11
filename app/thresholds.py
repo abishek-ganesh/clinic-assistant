@@ -39,3 +39,7 @@ PROPOSAL_TTL_SECONDS = 600
 MAX_BOOKING_MESSAGE_CHARS = 500
 MAX_BOOKING_HISTORY = 30
 MAX_BOOKING_TURN_CHARS = 2000
+
+# Token page: longest email (the limit in the email standard) and longest class code accepted.
+MAX_EMAIL_CHARS = 254
+MAX_CLASS_CODE_CHARS = 100

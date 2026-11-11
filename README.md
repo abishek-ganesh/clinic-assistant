@@ -12,6 +12,7 @@ Three more pieces sit on the same app:
 |---|---|---|
 | Booking agent | https://clinic-assistant-mocha.vercel.app/book | an agent that can look up open times and propose one, but only code books, and only after you press Confirm |
 | MCP server | `https://clinic-assistant-mocha.vercel.app/mcp` | the handbook search and the open-slot lookup as tools for any MCP client. [docs/mcp.md](docs/mcp.md) shows how to connect |
+| Class tokens | https://clinic-assistant-mocha.vercel.app/token | students enter their email and the class code and get their own token for the class endpoint |
 | Evals and usage stats | https://clinic-assistant-mocha.vercel.app/stats | a public page of usage numbers from the request log. The answer eval behind it runs in CI on every push to `main` |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works, [DECISIONS.md](DECISIONS.md) for why it works that way and [DEMO.md](DEMO.md) for how to show it.
@@ -85,6 +86,8 @@ uv run python scripts/tokens.py mint --label "Ada Lovelace" --email ada@example.
 uv run python scripts/tokens.py mint --roster roster.csv > tokens.csv   # keep tokens.csv out of the repo
 uv run python scripts/tokens.py list
 uv run python scripts/tokens.py revoke <prefix or label>
+uv run python scripts/tokens.py class-code new     # a new code for the /token page; share it in Slack
+uv run python scripts/tokens.py class-code close   # stop issuing tokens
 
 BOOTCAMP_TOKEN=sk-bootcamp-... uv run python scripts/student_smoke.py <base url>   # both surfaces
 uv run python scripts/access_checks.py <base url>   # bad token, rate limit, spend cap, revoke
