@@ -451,9 +451,14 @@ textarea::placeholder { color: #6b7790; }
 .passage-content {
   grid-area: content;
   font-size: 0.9rem;
-  white-space: pre-line;
   overflow-wrap: anywhere;
 }
+
+.passage-content > * + * { margin-top: var(--space-2); }
+.passage-content p, .passage-content ul { margin-bottom: 0; }
+.passage-list { padding-left: 1.2em; list-style: disc; }
+.passage-list li + li { margin-top: 0.15em; }
+.passage-content strong { font-weight: 600; }
 
 /* Step 4: answer */
 

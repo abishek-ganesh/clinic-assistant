@@ -283,7 +283,7 @@ function showPassages(data) {
       el("span", "passage-rank", String(passage.rank)),
       source,
       side,
-      el("p", "passage-content", passage.content),
+      handbookText(passage.content),
     );
     return item;
   });
@@ -383,6 +383,32 @@ function updateCharCount() {
 
 function bestSimilarity(passages) {
   return Math.max(0, ...passages.map((passage) => passage.similarity));
+}
+
+// Handbook passages are Markdown. This draws the two things they use, lists and **bold**,
+// by building elements. Everything else stays plain text, so no HTML is ever parsed.
+function handbookText(markdown) {
+  const box = el("div", "passage-content");
+  for (const block of markdown.split(/\n\s*\n/)) {
+    const lines = block.split("\n").filter((line) => line.trim());
+    if (lines.length === 0) continue;
+    if (lines.every((line) => line.startsWith("- "))) {
+      const list = el("ul", "passage-list");
+      for (const line of lines) list.append(withBold(el("li", ""), line.slice(2)));
+      box.append(list);
+    } else {
+      box.append(withBold(el("p", ""), lines.join(" ")));
+    }
+  }
+  return box;
+}
+
+// Append text to a node, turning **words** into <strong> elements.
+function withBold(node, text) {
+  text.split(/\*\*(.+?)\*\*/).forEach((part, index) => {
+    if (part) node.append(index % 2 ? el("strong", "", part) : part);
+  });
+  return node;
 }
 
 // Create an element with a class and plain text. Never parses HTML.
