@@ -20,7 +20,7 @@ PASSAGE = Passage(
     content="Open Saturdays from 9:00 am to 1:00 pm.", similarity=0.56649,
 )  # fmt: skip
 SLOT = Slot(
-    slot_id="slot-1", provider="Dr. Patel", visit_type="annual physical",
+    slot_id="slot-1", provider="Dr. Patel", visit_type="physical",
     starts_at="2026-12-01T09:30:00-05:00", display="Tue Dec 1, 9:30 AM with Dr. Patel",
 )  # fmt: skip
 
@@ -112,9 +112,9 @@ async def test_find_passages_returns_the_fields_a_model_needs(wired):
 
 
 async def test_find_slots_passes_the_filters_to_the_schedule(wired):
-    slots = await mcp_server.find_slots("annual physical", date(2026, 12, 1))
+    slots = await mcp_server.find_slots("physical", date(2026, 12, 1))
     assert slots == [SLOT]
-    assert wired["schedule"] == [("annual physical", date(2026, 12, 1))]
+    assert wired["schedule"] == [("physical", date(2026, 12, 1))]
 
 
 # The access wrapper
@@ -244,11 +244,11 @@ def test_search_handbook_call_returns_passages_and_logs(wired, client):
 
 def test_check_availability_call_parses_the_date(wired, client):
     result = call_tool(
-        client, "check_availability", {"visit_type": "annual physical", "on_or_after": "2026-12-01"}
+        client, "check_availability", {"visit_type": "physical", "on_or_after": "2026-12-01"}
     )
     assert result["isError"] is False
     assert result["structuredContent"]["result"] == [SLOT.model_dump()]
-    assert wired["schedule"] == [("annual physical", date(2026, 12, 1))]
+    assert wired["schedule"] == [("physical", date(2026, 12, 1))]
 
     # Both arguments are optional
     assert call_tool(client, "check_availability", {})["isError"] is False
