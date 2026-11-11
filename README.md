@@ -4,7 +4,7 @@
 
 The reference app for the Applied AI Engineer Bootcamp. It starts as a question-answering assistant over a fictional clinic's patient handbook and grows with the course: retrieval-augmented generation (RAG) first, then agents and MCP, then evals, guardrails and production operations.
 
-**Status:** Phase 0 complete (Nov 10, 2026): database migrated, deployed at https://clinic-assistant-mocha.vercel.app ([/health](https://clinic-assistant-mocha.vercel.app/health)). See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works and [DECISIONS.md](DECISIONS.md) for why it works that way.
+**Live:** https://clinic-assistant-mocha.vercel.app. Ask the fictional clinic a question and watch every step: the judgments, the retrieved passages, the answer and the exact prompt. See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works, [DECISIONS.md](DECISIONS.md) for why it works that way and [DEMO.md](DEMO.md) for how to show it.
 
 ## Three models, one job each
 
@@ -47,6 +47,36 @@ scripts/check_migrations.sh
 supabase db push
 ```
 
+## The handbook
+
+```bash
+uv run python scripts/ingest.py           # chunk, embed and load handbook/*.md
+uv run python scripts/eval_retrieval.py   # does the right section rank first for each question?
+```
+
+## The class endpoint
+
+Students call the app with the `openai` package and a personal token:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="https://clinic-assistant-mocha.vercel.app/v1", api_key="sk-bootcamp-...")
+reply = client.chat.completions.create(
+    model="bootcamp", messages=[{"role": "user", "content": "hi"}]
+)
+```
+
+```bash
+uv run python scripts/tokens.py mint --label "Ada Lovelace" --email ada@example.com
+uv run python scripts/tokens.py mint --roster roster.csv > tokens.csv   # keep tokens.csv out of the repo
+uv run python scripts/tokens.py list
+uv run python scripts/tokens.py revoke <prefix or label>
+
+BOOTCAMP_TOKEN=sk-bootcamp-... uv run python scripts/student_smoke.py <base url>   # both surfaces
+uv run python scripts/access_checks.py <base url>   # bad token, rate limit, spend cap, revoke
+```
+
 ## Deploy
 
 Pushing to `main` deploys to Vercel. Environment variables live in the Vercel project settings, never in the repo.
@@ -54,9 +84,11 @@ Pushing to `main` deploys to Vercel. Environment variables live in the Vercel pr
 ## Layout
 
 ```
-app/            FastAPI app (main.py is the Vercel entry point)
+app/            FastAPI app (main.py is the Vercel entry point); app/static/ is the demo page
+handbook/       the fictional clinic's patient handbook, one Markdown file per topic
+eval/           questions with the handbook section that should answer each
 tests/          pytest; HTTP is mocked with respx, integration tests are marked
 supabase/       migrations and SQL checks
-scripts/        operational scripts
+scripts/        ingest, evals, tokens and end-to-end checks
 docs/           screenshots and notes
 ```

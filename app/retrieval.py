@@ -7,6 +7,8 @@ import httpx
 
 from app.config import get_settings
 from app.db import get_db
+from app.models import Passage
+from app.thresholds import TOP_K
 
 VOYAGE_URL = "https://api.voyageai.com/v1/embeddings"
 MAX_ATTEMPTS = 3
@@ -75,3 +77,39 @@ async def match_chunks(query_embedding: list[float], match_count: int = 4) -> li
         "match_chunks", {"query_embedding": query_embedding, "match_count": match_count}
     ).execute()
     return result.data
+
+
+async def retrieve(question: str, k: int = TOP_K) -> list[Passage]:
+    """The k handbook passages closest in meaning to the question, best first."""
+    [query_embedding] = await embed([question], "query")
+    rows = await match_chunks(query_embedding, k)
+    return [
+        Passage(
+            rank=rank,
+            section_slug=row["section_slug"],
+            section=row["section_title"],
+            heading=row["heading"],
+            content=row["content"],
+            similarity=row["similarity"],
+        )
+        for rank, row in enumerate(rows, start=1)
+    ]
+
+
+async def check_corpus_model() -> None:
+    """Raise if any stored chunk was embedded by a model other than the configured one."""
+    configured = get_settings().embedding_model
+    db = await get_db()
+    result = await (
+        db.table("handbook_chunks")
+        .select("embedding_model")
+        .neq("embedding_model", configured)
+        .limit(1)
+        .execute()
+    )
+    if result.data:
+        stored = result.data[0]["embedding_model"]
+        raise RuntimeError(
+            f"handbook_chunks holds vectors from {stored!r} but EMBEDDING_MODEL is {configured!r}. "
+            "Vectors from different models are not comparable: run scripts/ingest.py to re-embed."
+        )

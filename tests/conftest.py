@@ -1,5 +1,7 @@
 """Shared fixtures. Unit tests never read the real .env; they build Settings explicitly."""
 
+import sys
+
 import pytest
 
 from app.config import Settings
@@ -19,8 +21,10 @@ def use_settings(monkeypatch):
 
     def _use(**overrides) -> Settings:
         settings = Settings(_env_file=None, **overrides)
-        for module in ("app.main", "app.retrieval", "app.db"):
-            monkeypatch.setattr(f"{module}.get_settings", lambda: settings)
+        # Every app module that imported get_settings holds its own reference to it
+        for name, module in list(sys.modules.items()):
+            if name.startswith("app.") and hasattr(module, "get_settings"):
+                monkeypatch.setattr(module, "get_settings", lambda: settings)
         return settings
 
     return _use

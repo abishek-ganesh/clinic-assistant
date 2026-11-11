@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Family Clinic Assistant</title>
+  <meta name="description" content="A retrieval-augmented generation pipeline you can watch, step by step. Fictional clinic. Not medical advice.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Schibsted+Grotesk:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#question">Skip to the question box</a>
+
+  <header class="site-header">
+    <div class="wrap header-row">
+      <div class="brand">
+        <p class="eyebrow">Retrieval-augmented generation</p>
+        <h1>Family Clinic Assistant</h1>
+        <div class="header-rule"></div>
+        <p class="tagline">Ask one question and watch every judgment, passage and prompt behind the answer.</p>
+      </div>
+      <p class="notice">Fictional clinic. Not medical advice.</p>
+    </div>
+    <!-- When a second panel is added, its tab bar goes here, inside the header. -->
+  </header>
+
+  <main class="wrap">
+    <!-- One panel per tab. Today there is only this one. -->
+    <section class="panel" id="panel-ask" aria-label="Ask the handbook">
+
+      <section class="step" aria-labelledby="title-question">
+        <div class="step-title">
+          <span class="step-num" aria-hidden="true">1</span>
+          <h2 id="title-question">Question</h2>
+        </div>
+        <p class="step-note">Ask the clinic handbook anything a patient might ask.</p>
+
+        <form id="ask-form" class="ask-form card" novalidate>
+          <label class="sr-only" for="question">Your question</label>
+          <textarea id="question" name="question" rows="2" maxlength="500"
+                    placeholder="How long do refills take?" aria-describedby="question-help"></textarea>
+          <div class="ask-row">
+            <p id="question-help" class="ask-help">
+              <span id="char-count">0</span> / 500 characters. Enter asks, Shift+Enter adds a line.
+            </p>
+            <button id="ask-button" class="ask-button" type="submit">Ask</button>
+          </div>
+        </form>
+
+        <div class="chips" role="group" aria-labelledby="chips-label">
+          <p id="chips-label" class="eyebrow">Or try one of these</p>
+          <button type="button" class="chip">Are you open on Saturdays?</button>
+          <button type="button" class="chip">Can I do a telehealth visit for a refill, and what if I need to cancel it?</button>
+          <button type="button" class="chip">What's a normal dose of ibuprofen for a 10 year old?</button>
+          <button type="button" class="chip">My father has crushing chest pain and his left arm is numb</button>
+        </div>
+
+        <div id="status" class="status" role="status" hidden>
+          <div class="status-bar" aria-hidden="true"></div>
+          <p id="status-text"></p>
+        </div>
+
+        <div id="error" class="error card" role="alert" hidden>
+          <p id="error-title" class="error-title"></p>
+          <p id="error-help" class="error-help"></p>
+          <div class="error-row">
+            <button id="retry-button" class="retry-button" type="button">Try again</button>
+            <code id="error-code" class="error-code"></code>
+          </div>
+        </div>
+      </section>
+
+      <!-- First load: a preview of the steps the pipeline will fill in. -->
+      <div id="intro">
+        <section class="step step-ghost">
+          <div class="step-title">
+            <span class="step-num" aria-hidden="true">2</span>
+            <h2>Judgment</h2>
+          </div>
+          <p class="step-note">A small model returns two probabilities: is this an emergency, and is it something the handbook covers? Code compares each number to a fixed threshold and decides whether to answer at all.</p>
+        </section>
+        <section class="step step-ghost">
+          <div class="step-title">
+            <span class="step-num" aria-hidden="true">3</span>
+            <h2>Evidence</h2>
+          </div>
+          <p class="step-note">An embedding model turns the question into a vector. The database returns the four handbook passages whose vectors sit closest to it.</p>
+        </section>
+        <section class="step step-ghost step-last">
+          <div class="step-title">
+            <span class="step-num" aria-hidden="true">4</span>
+            <h2>Answer</h2>
+          </div>
+          <p class="step-note">A generative model writes a short answer from those passages only, and cites them. You can open the exact prompt it was sent.</p>
+        </section>
+      </div>
+
+      <!-- After a question: the same steps, filled in by app.js. -->
+      <div id="results" hidden>
+        <div id="emergency" class="emergency-slot" hidden>
+          <section class="emergency" role="alert">
+            <p class="eyebrow">Possible emergency</p>
+            <p id="emergency-text" class="emergency-text"></p>
+            <p class="emergency-note">Code wrote this message, not a model. The emergency probability crossed the threshold, so the pipeline stopped: no passages are shown and nothing was generated.</p>
+          </section>
+        </div>
+
+        <section class="step" id="step-judgment" aria-labelledby="title-judgment">
+          <div class="step-title">
+            <span class="step-num" aria-hidden="true">2</span>
+            <h2 id="title-judgment">Judgment</h2>
+          </div>
+          <p class="step-note">The model returns numbers. Code compares each one to a line and decides.</p>
+
+          <div class="judgments">
+            <div class="meter card" id="meter-emergency">
+              <p class="eyebrow">Emergency probability <span class="tag" hidden>uncalibrated</span></p>
+              <p class="meter-value"></p>
+              <div class="meter-track" aria-hidden="true">
+                <div class="meter-fill"></div>
+                <div class="meter-line"><span class="meter-line-label"></span></div>
+              </div>
+              <p class="meter-verdict"></p>
+            </div>
+
+            <div class="meter card" id="meter-scope">
+              <p class="eyebrow">In-scope probability <span class="tag" hidden>uncalibrated</span></p>
+              <p class="meter-value"></p>
+              <div class="meter-track" aria-hidden="true">
+                <div class="meter-fill"></div>
+                <div class="meter-line"><span class="meter-line-label"></span></div>
+              </div>
+              <p class="meter-verdict"></p>
+            </div>
+
+            <div class="decision card" id="decision">
+              <p class="eyebrow">Code decided</p>
+              <p id="decision-word" class="decision-word"></p>
+              <p id="decision-why" class="decision-why"></p>
+            </div>
+          </div>
+          <p id="uncalibrated-note" class="callout" hidden>These numbers come from a local fallback model and are uncalibrated: read them as rough scores, not as true probabilities.</p>
+        </section>
+
+        <section class="step" id="step-evidence" aria-labelledby="title-evidence">
+          <div class="step-title">
+            <span class="step-num" aria-hidden="true">3</span>
+            <h2 id="title-evidence">Evidence</h2>
+          </div>
+          <p id="evidence-note" class="step-note"></p>
+          <ol id="passages" class="passages"></ol>
+        </section>
+
+        <section class="step step-last" id="step-answer" aria-labelledby="title-answer">
+          <div class="step-title">
+            <span class="step-num" aria-hidden="true">4</span>
+            <h2 id="title-answer">Answer</h2>
+          </div>
+
+          <div id="answer" class="answer card">
+            <p id="answer-kicker" class="eyebrow"></p>
+            <p id="answer-text" class="answer-text"></p>
+            <p id="answer-why" class="answer-why"></p>
+          </div>
+
+          <details id="prompt" class="prompt">
+            <summary>
+              <span class="when-closed">Show the exact prompt</span>
+              <span class="when-open">Hide the exact prompt</span>
+            </summary>
+            <p class="eyebrow">System</p>
+            <pre id="prompt-system" tabindex="0"></pre>
+            <p class="eyebrow">User</p>
+            <pre id="prompt-user" tabindex="0"></pre>
+          </details>
+          <p id="no-prompt" class="no-prompt" hidden>No prompt to show: the gate stopped the pipeline before anything was sent to the generative model.</p>
+        </section>
+
+        <p id="meta" class="meta"></p>
+      </div>
+
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p class="wrap">The clinic, its handbook and every patient detail on this page are made up for teaching. In a real emergency, call 911.</p>
+  </footer>
+</body>
+</html>

@@ -1,4 +1,5 @@
--- Assertions for migration 1: vector ranking, every authorize_request outcome, anon lockout.
+-- Assertions for every migration: vector ranking, every authorize_request and
+-- authorize_demo_request outcome, anon lockout.
 \set ON_ERROR_STOP on
 grant all on all tables in schema public to service_role;
 create function pg_temp.vec(a float, b float) returns extensions.vector language sql as $$
@@ -57,6 +58,57 @@ begin
   raise notice 'ALL FUNCTION CHECKS PASSED';
 end $$;
 
+-- authorize_demo_request: every outcome, counted per IP on the demo surface only
+do $$
+declare r jsonb;
+begin
+  r := authorize_demo_request('ip1');
+  assert r->>'reason' = 'kill_switch', 'kill switch still on from the block above: ' || r::text;
+  update app_settings set value = 'false' where key = 'kill_switch';
+  update app_settings set value = '3' where key = 'demo_rpm_per_ip';
+
+  r := authorize_demo_request('ip1');
+  assert (r->>'allowed')::boolean and (r->>'remaining_minute')::int = 2, r::text;
+  assert r->'reason' = 'null'::jsonb, 'allowed must carry a null reason: ' || r::text;
+
+  -- denied rows, endpoint rows, other IPs and rows older than a minute don't count
+  insert into usage_log (surface, client_ip_hash, outcome)
+  select 'demo', 'ip1', 'denied' from generate_series(1,10);
+  insert into usage_log (surface, client_ip_hash, outcome)
+  select 'endpoint', 'ip1', 'completed' from generate_series(1,10);
+  insert into usage_log (surface, client_ip_hash, outcome)
+  select 'demo', 'ip2', 'answered' from generate_series(1,10);
+  insert into usage_log (surface, client_ip_hash, outcome, created_at)
+  select 'demo', 'ip1', 'answered', now() - interval '2 minutes' from generate_series(1,10);
+  r := authorize_demo_request('ip1');
+  assert (r->>'allowed')::boolean and (r->>'remaining_minute')::int = 2, 'wrong rows counted: ' || r::text;
+
+  insert into usage_log (surface, client_ip_hash, outcome) values ('demo', 'ip1', 'answered'), ('demo', 'ip1', 'declined');
+  r := authorize_demo_request('ip1');
+  assert (r->>'allowed')::boolean and (r->>'remaining_minute')::int = 0, r::text;
+  insert into usage_log (surface, client_ip_hash, outcome) values ('demo', 'ip1', 'emergency');
+  r := authorize_demo_request('ip1');
+  assert r->>'reason' = 'rate_limit_minute' and (r->>'retry_after_seconds')::int = 60, r::text;
+  assert not (r->>'allowed')::boolean, r::text;
+  r := authorize_demo_request('ip3');
+  assert (r->>'allowed')::boolean, 'one IP at its limit must not block another: ' || r::text;
+
+  -- spend cap counts all traffic this month and wins over the rate limit
+  insert into usage_log (token_id, surface, outcome, estimated_cost_usd) values (null, 'endpoint', 'completed', 10.5);
+  r := authorize_demo_request('ip1');
+  assert r->>'reason' = 'spend_cap', r::text;
+  update usage_log set created_at = date_trunc('month', now() at time zone 'America/New_York') at time zone 'America/New_York' - interval '1 second'
+   where estimated_cost_usd is not null;
+  r := authorize_demo_request('ip3');
+  assert (r->>'allowed')::boolean, 'last month''s spend counted: ' || r::text;
+  delete from usage_log;
+
+  update app_settings set value = 'true' where key = 'kill_switch';
+  r := authorize_demo_request('ip3');
+  assert r->>'reason' = 'kill_switch', 'kill switch must win over everything: ' || r::text;
+  raise notice 'ALL DEMO FUNCTION CHECKS PASSED';
+end $$;
+
 -- Anonymous roles are locked out of tables and functions
 set role anon;
 do $$ begin
@@ -64,8 +116,11 @@ do $$ begin
   exception when insufficient_privilege then null; end;
   begin perform public.authorize_request('x'); raise exception 'anon could execute authorize_request';
   exception when insufficient_privilege then null; end;
+  begin perform public.authorize_demo_request('x'); raise exception 'anon could execute authorize_demo_request';
+  exception when insufficient_privilege then null; end;
   raise notice 'ANON LOCKED OUT';
 end $$;
 reset role;
 set role service_role;
 select (public.authorize_request('nope'))->>'reason' as service_role_can_call;
+select (public.authorize_demo_request('x'))->>'reason' as service_role_can_call_demo;

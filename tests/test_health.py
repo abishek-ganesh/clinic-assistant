@@ -35,8 +35,9 @@ def test_health_never_leaks_key_values(use_settings):
         assert value not in text
 
 
-def test_root_says_fictional_and_not_medical_advice(use_settings):
+def test_root_serves_the_demo_page_with_the_fictional_notice(use_settings):
     use_settings()
-    body = client.get("/").json()
-    assert body["name"] == "Family Clinic Assistant"
-    assert "Not medical advice" in body["note"]
+    page = client.get("/")
+    assert page.headers["content-type"].startswith("text/html")
+    assert "Family Clinic Assistant" in page.text
+    assert "Not medical advice" in page.text

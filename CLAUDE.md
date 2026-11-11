@@ -16,4 +16,4 @@ Reference app for the Applied AI Engineer Bootcamp. Students read this code in S
 - If a loop repeats (especially database connection errors), stop and report instead of retrying.
 
 ## Commands
-`uv run pytest` · `uv run pytest -m integration` · `scripts/check_migrations.sh` · `uv run ruff check .` · `uv run uvicorn app.main:app --reload`
+`uv run pytest` · `uv run pytest -m integration` · `scripts/check_migrations.sh` · `uv run ruff check .` · `uv run uvicorn app.main:app --reload` · `uv run python scripts/ingest.py` · `uv run python scripts/eval_retrieval.py` · `uv run python scripts/student_smoke.py <url>` · `uv run python scripts/access_checks.py <url>`

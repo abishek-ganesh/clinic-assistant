@@ -94,7 +94,50 @@ A running log: what we decided, what else we considered, and why. Then what brok
 ### D25. Days and months follow Eastern time
 - **Why:** class runs 8-11pm ET. With UTC days, the daily cap would reset at 7 or 8pm Eastern, in the middle of a session.
 
+## Phase 1 (Nov 11, 2026)
+
+### D26. Similarity floor 0.45, measured rather than guessed
+- **Considered:** the 0.30 we planned before any data existed.
+- **Why:** `scripts/eval_retrieval.py` showed answerable questions scoring 0.52 to 0.69 on their best passage and unanswerable ones 0.14 to 0.37. At 0.30, "Can you recommend a dermatologist?" (0.37) would have reached the generator. 0.45 sits in the gap.
+- **Caveat:** this rests on 24 questions written as full sentences. Terse real questions will score lower, so the stored similarities in `usage_log` are what to re-tune from.
+- **Teaching angle:** a threshold is a claim about your data. Similarity scores are not comparable across embedding models, so the number has to be measured again if the model changes.
+
+### D27. Embed each chunk with its section title and heading
+- **Why:** a chunk such as "Saturday 9:00 am to 1:00 pm, Main Street only" carries little meaning alone. Embedding "Hours and locations: Saturday hours" in front of it gives the vector its topic. Only the passage text is stored and shown.
+- **Not measured:** we did not run the eval without the prefix. That comparison is a good Phase 2 exercise.
+
+### D28. Three layers decide whether to answer, cheapest first
+- **What:** the judgment model's scope probability, then the similarity floor, then the generator's own `answerable` flag.
+- **Why:** each catches what the others miss. The dosing question fails on scope (0.10). "Do you offer dental cleanings?" sounds in scope (0.53) but nothing relevant is retrieved (0.31). A question that retrieves plausible passages which don't actually answer it is caught only when the generator reads them.
+- **Detail:** when the generator says the passages don't answer the question, the user sees the same fixed decline message as the other two cases, not the model's wording. A decline still shows the retrieved passages.
+
+### D29. The demo page gets its own limit function, and IP addresses are stored as keyed hashes
+- **Considered:** counting demo requests from Python; storing a plain sha256 of the IP.
+- **Why:** the same reasoning as D13, one round trip next to the data. A plain hash of an IPv4 address can be reversed by hashing all four billion of them, so the log stores an HMAC with a server-only key.
+
+### D30. Token prefix is 18 characters
+- **Why:** every token starts with the same 12 characters (`sk-bootcamp-`), so a 12-character prefix would identify nothing. The stored prefix adds 6 random characters: enough to find a student's token when they paste the start of it, far too few to guess the rest.
+
+### D31. The usage log write is awaited, and a failed limit check refuses the request
+- **Considered:** logging in a background task; letting requests through when the database is unreachable.
+- **Why:** limits are counted from `usage_log`, so the row has to exist before the next request is checked. And if the check itself fails, serving the request would mean spending money nobody is counting. The reverse case is deliberate too: a failed log write after a successful answer does not turn the answer into an error.
+
+### D32. Unsupported sampling parameters are dropped and reported, not rejected
+- **Why:** students will copy `temperature=0.7` from every tutorial. Rejecting it would break their first call for a reason unrelated to what they are learning; dropping it silently would teach something false. The response says what was ignored in a header and a body field.
+- **Not reported:** `stop`, `response_format`, `user` and `stream_options` are accepted and ignored without a note. `tools`, `n > 1` and images are rejected with a clear 400.
+
+### D33. A streaming error after the first byte travels as an event
+- **Why:** once a stream has started, the 200 status is already sent and cannot become a 502. The error is sent as a final event in OpenAI's error shape, which the `openai` package raises as an exception.
+
+### D34. Tests fake the Anthropic client instead of mocking HTTP
+- **Why:** the Anthropic SDK (2.x) is built on `httpx2`, which `respx` cannot intercept. Jev, Voyage and Ollama are called with plain `httpx`, so those are mocked at the HTTP layer; the Anthropic client is replaced with a small fake.
+
 ## What broke and how we fixed it
 
 ### Phase 0
 - **The wrong `uv` ran.** `which uv` found an old Intel build inside Anaconda, which ran under Rosetta and offered only Intel Pythons. The native Homebrew `uv` was installed but shadowed on the PATH. Fix: call `/opt/homebrew/bin/uv` and move Homebrew ahead of Anaconda on the PATH. Lesson: when tooling behaves oddly, check `which` and `file` before anything else.
+
+### Phase 1
+- **Blank lines in `.env` overrode defaults.** `JEV_BASE_URL=` with nothing after it was read as an empty string, not as "use the default", so the Jev client would have called a URL with no host. Fix: `env_ignore_empty=True` in the settings class. Lesson: an unset variable and an empty one are different things, and config code has to choose what empty means.
+- **The planned similarity threshold was wrong.** 0.30 was written down before any data existed and would have let near-scope questions through. Fix: measure, then choose (D26).
+- **The plan assumed Anthropic SDK 1.x; 2.8 was current.** Sampling parameters are gone from the method signatures entirely, and a truncated structured output raises a pydantic error from inside the SDK rather than an API error. Fix: read the installed package before writing against it, and treat every failure at the route boundary as an upstream error.
