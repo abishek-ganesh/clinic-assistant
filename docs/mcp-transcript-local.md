@@ -9,7 +9,7 @@ Recorded Nov 11, 2026 on a laptop, before the first deploy of the MCP server.
 - `search_handbook` was real: the question was embedded by Voyage and matched in Supabase, using the keys in `.env`.
 - The access check (`authorize_demo`) was real and allowed every call.
 - `check_availability` was **stubbed**: `app/schedule.py` did not exist yet, so the scratch app registered a stand-in module that returns one fixed slot. The slot below is not real schedule data.
-- The `usage_log` writes **failed** during this run: the database still had the old `surface` check constraint, which does not allow `mcp` (the migration `20261111200000_open_surfaces.sql` had not been applied). `log_usage` swallows a failed insert by design, so the tool calls still answered. See "what broke" in `docs/9b/mcp.md`.
+- The `usage_log` writes **failed** during this run: the database still had the old `surface` check constraint, which does not allow `mcp` (the migration `20261111200000_open_surfaces.sql` had not been applied). `log_usage` swallows a failed insert by design, so the tool calls still answered. See "What broke and how we fixed it" in `DECISIONS.md`.
 
 ## Client output
 
@@ -245,5 +245,5 @@ GET /health -> 200
 
 - `/mcp/` answers directly instead of redirecting to `/mcp` (a 307 on a POST breaks some clients).
 - `GET` and `DELETE` get 405: this server offers no event stream and has no session to delete.
-- The Host and Origin checks are the SDK's DNS-rebinding protection, which is on for local runs and off in production (see the decisions in `docs/9b/mcp.md`).
+- The Host and Origin checks are the SDK's DNS-rebinding protection, which is on for local runs and off in production (see D51 in `DECISIONS.md`).
 - The existing routes and `/static` are untouched.

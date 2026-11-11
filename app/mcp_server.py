@@ -11,7 +11,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -166,8 +166,8 @@ async def search_handbook(
 async def check_availability(
     ctx: Context,
     visit_type: Annotated[
-        str | None,
-        Field(description="Kind of visit, e.g. 'annual physical'. Omit for any kind."),
+        Literal["returning", "physical", "telehealth"] | None,
+        Field(description="Kind of visit. Omit for any kind."),
     ] = None,
     on_or_after: Annotated[
         date | None,

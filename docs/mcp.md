@@ -15,7 +15,7 @@ Everything behind it is synthetic: the clinic is fictional and there is no patie
 | Tool | Arguments | Returns |
 |---|---|---|
 | `search_handbook` | `question` (text, 1 to 500 characters) | the handbook passages closest in meaning to the question, best first: `section`, `heading`, `content`, `similarity` (0 to 1) |
-| `check_availability` | `visit_type` (optional text), `on_or_after` (optional date, `YYYY-MM-DD`) | the next open appointment times, soonest first: `slot_id`, `provider`, `visit_type`, `starts_at`, `display` |
+| `check_availability` | `visit_type` (optional: `returning`, `physical` or `telehealth`), `on_or_after` (optional date, `YYYY-MM-DD`) | the next open appointment times, soonest first: `slot_id`, `provider`, `visit_type`, `starts_at`, `display` |
 
 Both tools only read. There is no booking tool on purpose: booking changes something in the world, and an action like that needs a person to confirm it first. This server has no way to ask, so it does not offer the action.
 
@@ -60,6 +60,6 @@ Then try one the handbook cannot answer ("What is the clinic's policy on bringin
 
 ## Limits
 
-The server needs no sign-in, so it is rate limited per network address: 10 tool calls a minute, shared with the demo page. Listing the tools is free; only tool calls count. When you hit the limit the tool returns an error the model can read ("Too many requests in the last minute. Wait 60 seconds and try again."), and it will usually tell you exactly that.
+The server needs no sign-in, so it is rate limited per network address: 10 requests a minute, shared with the demo page and the booking page. Listing the tools is free; only tool calls count. When you hit the limit the tool returns an error the model can read ("Too many requests in the last minute. Wait 60 seconds and try again."), and it will usually tell you exactly that.
 
 One thing to know: claude.ai and Claude Desktop connectors call the server from Anthropic's cloud, not from your laptop, so everyone using a connector shares a few addresses and one allowance. Claude Code calls from your own machine.

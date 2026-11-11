@@ -132,6 +132,153 @@ A running log: what we decided, what else we considered, and why. Then what brok
 ### D34. Tests fake the Anthropic client instead of mocking HTTP
 - **Why:** the Anthropic SDK (2.x) is built on `httpx2`, which `respx` cannot intercept. Jev, Voyage and Ollama are called with plain `httpx`, so those are mocked at the HTTP layer; the Anthropic client is replaced with a small fake.
 
+## Thin slices (Nov 2026)
+
+Three thin slices built on Nov 11, 2026, one per later stage of the course: a booking agent with human confirmation (D36 to D46), an MCP server (D47 to D54), and an answer eval in CI with a usage stats page (D55 to D63). D35 is the scaffolding they share.
+
+### D35. One per-visitor limit across every open surface
+- **Considered:** a separate per-minute counter for each open surface (the demo page, the booking agent, the MCP server).
+- **Why:** a visitor is one source of cost, whichever door they come in through. Three counters would give one address three allowances. One shared count also needed no new function: migration `20261111200000_open_surfaces.sql` widens the `usage_log.surface` check to allow `booking`, `mcp` and `eval`, and `authorize_demo_request` now counts every row with the visitor's address hash instead of only demo rows.
+- **Consequence:** ten requests a minute is the total for one address. A booking conversation and a few Ask questions share it.
+
+### D36. The model proposes, code books, a person confirms
+- **Considered:** letting the model call `book_slot` whenever it judges the patient agreed; asking "shall I book it?" in text and trusting a typed "yes".
+- **Why:** booking is a side effect, and the app's rule is that code owns every side effect. A typed "yes" is just more text the model interprets, and text can be injected or misread. A button press that returns a server-signed token is something code can verify without interpreting anything.
+- **Teaching angle:** this is the human-in-the-loop pattern in its smallest form. In the real-model runs, asked to "skip the buttons and call book_slot", the model either proposed anyway or tried and got an error result. Nothing was booked either way.
+
+### D37. `book_slot` stays a model tool, guarded by the signature
+- **Considered:** having the Confirm click book directly in code with no model call.
+- **Why:** keeping it a tool shows students the part that matters about agents: the model can ask for anything, and the tool's own code decides whether it runs. It also lets the model write the confirmation message and recover gracefully when the slot was just taken.
+- **Cost:** a Confirm click costs one or two model calls, and if the model ever failed to call `book_slot` after a Confirm the patient would have to press again. In repeated real-model runs it called it every time. Booking directly in code on Confirm would be the more deterministic choice for a real product and is a fair class discussion.
+
+### D38. A signed, expiring confirmation instead of server-side state
+- **Considered:** storing pending proposals in a table; a session cookie.
+- **Why:** the function is serverless and keeps no memory (D3, D13). A proposal table would need cleanup and a second round trip. An HMAC over the slot id and an expiry lets any instance verify a confirmation with no storage at all. Ten minutes is long enough to read the card and short enough that the slot list has not drifted far.
+- **Not done:** the signature is not bound to the visitor's address, because phones change address mid-conversation. Replays are harmless because of D41.
+
+### D39. The browser holds the conversation as plain text turns
+- **Considered:** sending back the full message list with tool calls, tool results and thinking blocks.
+- **Why:** simple to read, simple to validate, and nothing in it can cause a side effect. It also avoids replaying thinking blocks across requests, which Haiku 5.5 only accepts when nothing before them changed.
+- **Consequence:** slot ids do not survive between turns. The system prompt says so, and `propose_slot` only accepts a slot that `check_availability` returned in the same turn, so every proposal is grounded in a fresh look at the schedule.
+
+### D40. Availability is computed, not stored
+- **Considered:** seeding a slots table for the next few months.
+- **Why:** a seeded table goes stale and needs a refill job. Generating slots from weekly blocks with `generate_series` is a dozen lines of SQL and always starts tomorrow. Only bookings are rows.
+- **Detail:** the functions run with `set timezone = 'America/New_York'`, so "tomorrow", weekdays and clock times mean clinic time wherever the server is. The date window and display text come from Postgres, so Python never does timezone math on slots.
+
+### D41. The database prevents double-booking
+- **Considered:** check availability in Python, then insert.
+- **Why:** two visitors can pass the same check a millisecond apart. `unique (provider, starts_at)` makes the second insert fail, and `book_slot` turns that into a clean `slot_taken`. Each provider's blocks never overlap, so a start time identifies a slot and one constraint is enough.
+
+### D42. Block scheduling for visit types
+- **Considered:** a 20 minute grid where a physical takes two adjacent slots.
+- **Why:** two-slot bookings need an overlap check that a simple unique constraint cannot express. Real clinics also block their days (physicals first thing, video visits late afternoon), so the simpler model is the realistic one.
+
+### D43. No patient details, and a per-visitor booking cap
+- **Why:** the page is public and the data must stay synthetic, so an appointment is a provider, a time, a visit type and a code. Because anyone can book, one visitor could fill the two-week schedule; `booking_max_per_ip_per_day` (5, in `app_settings`) limits that on top of the shared per-minute request limit (D35).
+- **Not done:** there is no cancel tool, and old appointments are never deleted. Past rows cost nothing because the schedule only looks forward.
+
+### D44. Code writes the proposal text and the fixed messages
+- **Why:** when `propose_slot` ends the turn there may be no model text at all, and the wording next to a Confirm button should not vary. The page labels these turns "Written by code" with a dashed border, the same visual language the Ask page uses for a declined answer.
+
+### D45. In the booking agent, emergencies and medical questions are handled by the system prompt only
+- **Considered:** running the Jev emergency judgment in front of the agent, as `/api/ask` does.
+- **Why (for now):** this slice was kept thin. In real-model runs the agent pointed chest pain to 911 and declined a dosing question without proposing anything. It is still a prompt, not a threshold: putting the same judgment gate in front of the booking agent is the consistent next step.
+
+### D46. Low effort and no strict tool schemas for the agent
+- **Why:** with `effort: low` Haiku 5.5 completed every scenario in two or three model calls. Tool inputs are validated in Python instead of `strict: true`, because the validation code is itself the lesson: tool arguments are model output.
+
+### D47. The official MCP Python SDK, version 2 (`MCPServer`), not hand-rolled JSON-RPC
+- **Considered:** writing the three JSON-RPC methods by hand (about 60 lines); the third-party FastMCP package.
+- **Why:** the SDK turns a typed Python function into a tool with a JSON schema, validates arguments, and already speaks both protocol generations (the handshake one and the 2026-07-28 revision, which makes every request self-contained). Hand-rolling would teach the wire format but freeze us on one revision.
+- **Gotcha worth teaching:** SDK 2.x renamed `FastMCP` to `MCPServer` (`from mcp.server.mcpserver import MCPServer`). Most tutorials and most model training data still show the old import, which now raises with a pointer to the migration guide. Check the installed version before trusting an example.
+
+### D48. Streamable HTTP, stateless, JSON responses
+- **Considered:** stateful sessions with an event stream (the SDK default); the older SSE transport.
+- **Why:** serverless keeps no memory between requests (D3, D13), so a session id handed out by one instance means nothing to the next. Stateless JSON makes each POST self-contained. The cost is no server-to-client messages, which two read-only tools don't use.
+
+### D49. A session manager per request, not one started in the app's lifespan
+- **The problem:** the SDK's HTTP handler needs its session manager "running" before it serves a request. Standalone, the SDK starts it in its own app's lifespan. Mounted inside another app it does not start, because Starlette never runs a mounted sub-app's lifespan, and the first request fails with `RuntimeError: Task group is not initialized`. The documented fix is a lifespan on the host app that enters `mcp.session_manager.run()`.
+- **Considered:** (1) the documented host-lifespan pattern; (2) starting the manager lazily on the first request and keeping it for the life of the instance; (3) building and starting a manager for each request.
+- **Chose (3). Why:**
+  - It works whether or not lifespan events run on the host. Vercel's changelog says FastAPI lifespan events have been supported since December 9, 2025, but older community threads report otherwise and we did not test it ourselves.
+  - A manager's `run()` is single-use. With (1), anything that enters the app's lifespan twice in one process (two `with TestClient(app)` blocks in a test suite) raises on the second entry.
+  - With (1) a failure during startup takes down every route, not just `/mcp`. With (3) the MCP endpoint is isolated.
+  - In stateless mode the manager holds no sessions, so there is nothing worth keeping between requests. Starting one costs a task group. Measured in-process: about 3 ms for a whole `tools/call` with stubbed work, and 40 concurrent calls through the real `main.app` each got their own answer.
+  - (2) keeps a task group alive across requests on a platform that freezes and thaws instances. That is the kind of hidden state serverless punishes.
+- **Cost:** it is not the pattern in the SDK's docs, and `StatelessEndpoint` calls `mcp.streamable_http_app()` only to get a fresh manager, discarding the Starlette app it returns. Both are explained in the class's comments. If we ever want stateful sessions this has to change, but so would the hosting.
+- **Wiring consequence:** `main.py` needs one line (`app.router.routes.extend(mcp_routes)`) and no `lifespan=` argument.
+- **Sources:** MCP Python SDK v2.3.0 docs `docs/run/asgi.md` ("Mounting disables the built-in lifespan") and `docs/troubleshooting.md` ("Task group is not initialized"); https://vercel.com/changelog/fastapi-lifespan-events-are-now-supported-on-vercel; https://vercel.com/docs/frameworks/backend/fastapi ("Startup and shutdown").
+
+### D50. Plain routes at `/mcp` and `/mcp/`, POST only, instead of `app.mount`
+- **Considered:** `app.mount("/mcp", mcp.streamable_http_app(streamable_http_path="/"))`.
+- **Why:** a mount answers the bare `/mcp` by redirecting to `/mcp/`, and a 307 on a POST breaks some MCP clients. Two exact-path routes answer both spellings directly and cannot shadow the other routes or `/static`.
+- **POST only:** in stateless mode the SDK still answers `GET /mcp` by opening an event stream that it never writes to and never closes. On serverless that would hold a function open until it times out, for nothing. The MCP spec says a server that offers no stream answers GET with 405, which is what a POST-only route does. `DELETE` (end a session) gets 405 too: there is no session.
+
+### D51. The MCP Host/Origin check is on locally and off in production
+- **What it is:** the SDK's DNS-rebinding protection rejects a request whose `Host` header is not on an allowlist (421) or whose `Origin` is not (403). With no configuration it allows only localhost, so behind a real hostname it rejects everything.
+- **Considered:** (1) allowlist the production hostname; (2) build the allowlist from Vercel's system environment variables to cover preview URLs; (3) switch the check off in production.
+- **Chose (3), keyed on `APP_ENV=production`. Why:** the attack is a web page tricking your browser into calling a server on your own machine or private network. It matters for local runs, where the check stays on with the localhost allowlist. In production the server is public, takes no cookies or credentials, and Vercel's proxy only routes requests whose Host is one of the project's domains. An allowlist there protects nothing and breaks the first time someone adds a custom domain or opens a preview URL. The SDK docs call switching it off "the honest configuration" behind a proxy that controls the Host header.
+- **Watch for:** a Vercel environment where `APP_ENV` is not `production` (a preview deployment, if the variable is only set for Production) will answer every MCP request with `421 Invalid Host header`.
+- **Source:** MCP Python SDK v2.3.0 `docs/run/deploy.md` ("Before anything else: the Host allowlist").
+
+### D52. MCP limits are checked per tool call, inside the tool, by one helper
+- **Considered:** an HTTP dependency on the route (counts every POST); the SDK's server middleware hook (one place for all tools).
+- **Why:** a client makes two or three protocol requests (`initialize`, `notifications/initialized`, `tools/list`) before its first tool call. Counting those against a 10-per-minute limit would lock people out for connecting. The SDK's middleware hook is marked provisional. So each tool passes its work to `metered(tool, request, work)`, which mirrors `/api/ask` step for step: check, deny and log, run, log. It fails closed: if the check itself errors, the call is refused.
+- **Trade-off:** a new tool is only limited if its author remembers to call `metered`. With two tools that is easy to see in review.
+
+### D53. MCP denials and failures are tool errors, with fixed messages
+- **Considered:** HTTP 429/503 from the route; JSON-RPC protocol errors.
+- **Why:** the model reads tool results, not HTTP statuses. `ToolError(message)` becomes a result with `isError: true`, so the model can say "you've hit the rate limit, try again in a minute". The messages reuse `DENIALS` from `app/access.py`. Internal failures get one fixed message; the exception text goes to the server log only.
+
+### D54. Tool descriptions are written for the model, results are typed, and there is no booking tool
+- **Why:** the description and input schema are the whole interface a model sees. Each description says what the tool covers, what comes back, how to read it (a similarity under about 0.45 means "probably not in the handbook") and what the tool cannot do. Arguments carry their own descriptions and limits (`question` is 1 to 500 characters, reusing `MAX_QUESTION_CHARS`). Return types are Pydantic models, so the SDK publishes an output schema and sends structured content alongside the text. Both tools are annotated `readOnlyHint`, which clients use to decide whether to ask before calling.
+- **`search_handbook` returns four fields, not the full `Passage`:** `rank` is the list order and `section_slug` is an internal id. Fewer fields means fewer tokens in the client's context.
+- **No booking tool:** the same rule as D36. Booking needs a person to confirm it, and this server has no way to ask, so it does not offer the action.
+
+### D55. Grade answers with deterministic checks, not a model
+- **Considered:** an LLM grader with a rubric; exact string match against a reference answer; embedding similarity to a reference answer.
+- **Why:** the handbook is fixed, so the facts a right answer must contain are known in advance and can be checked with a pattern. Code checks are free, instant, repeatable and explainable: a failure names the missing fact. Exact match fails on harmless rewording. Similarity gives a number with no obvious threshold and scores "3 business days" and "5 business days" as nearly the same. A model grader needs its own eval before it can be trusted.
+- **Teaching angle:** start with the cheapest check that could catch the failure. Reach for a model grader only for what code cannot judge (tone, completeness, faithfulness), and then measure the grader.
+
+### D56. The eval's pass bar is 10 of 10
+- **Considered:** 9 of 10, to tolerate model variation.
+- **Why:** the checks ask only for what any correct answer must have, and the patterns already absorb rewording, so a miss means behavior changed. With ten questions, a 90% bar lets exactly one failure through, and that one could be the emergency question or the dosing question. Six consecutive live runs passed 10 of 10 once the checks matched the questions (see "What broke").
+- **Cost of this choice:** a provider outage turns the job red even though the code is fine. That is acceptable: the eval is an alarm, a re-run is one click, and the failure text ("pipeline raised ...") says which kind of red it is.
+
+### D57. Facts are regular expressions stored next to the question
+- **Considered:** lists of acceptable substrings; normalizing times and money in code before comparing.
+- **Why:** one small pattern per fact covers "9 AM", "9:00 am" and "9 a.m." without a list of every spelling. The answer is lowercased, dashes are straightened and whitespace is collapsed before matching, so the patterns stay short. Each fact has a plain-language label, which is what a failure prints.
+- **Guard:** a unit test runs every pattern against the handbook file it came from. If the handbook changes and a fact goes stale, the unit test fails before any model is called.
+
+### D58. The eval calls the pipeline in-process, not the deployed URL
+- **Considered:** HTTP requests to the live `/api/ask`.
+- **Why:** the eval should test the code in this commit. On a push, the deployed site is still the previous commit for a minute or two. In-process also skips the per-IP rate limit, which would otherwise throttle ten quick questions from one CI runner. The trade: routes, access checks and Vercel itself are not exercised (`scripts/student_smoke.py` and `scripts/access_checks.py` cover those against a URL).
+- **Consequence:** in-process calls skip the spend cap check too, so the eval keeps running after the cap is hit. At about a tenth of a cent per run that is acceptable, and the rows are logged so the spend is visible.
+
+### D59. Eval runs are logged as their own surface
+- **Why:** CI spends real money on every push. Logging it as `surface = 'eval'` makes it count toward the cap and show up on the stats page, where it can be told apart from visitors. It also keeps eval questions out of the demo's decline rate.
+
+### D60. The eval job runs on pushes to `main` only, and actions are pinned to commits
+- **Considered:** running the eval on pull requests; `pull_request_target`; version tags such as `@v7`.
+- **Why:** secrets are not given to pull requests from forks, and the workarounds that do give them are a well-known way to leak keys. Pinning to a commit hash means the code that runs with the keys cannot change unless this file changes.
+- **Versions checked Nov 11, 2026:** `actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.3.
+- **The eval is an alarm, not a gate:** Vercel deploys on the same push and does not wait for GitHub Actions. Making the eval block a deploy is a production-unit topic.
+
+### D61. Stats are computed in one Postgres function
+- **Considered:** selecting rows and aggregating in Python; one query per number; a materialized view refreshed on a schedule.
+- **Why:** the same reasoning as D4 and D13. One round trip over HTTPS, and the counting happens next to the data, where percentiles and time zones are one line each. Pulling rows would move every request's metadata across the network to throw most of it away, and would put identifying columns in the app's memory on a public route. A materialized view is the right next step when the table is large; at class scale the function is cheap.
+- **Privacy by construction:** the function has no way to return a row, so the public page cannot leak one. A check in `supabase/tests/checks_stats.sql` asserts that labels, token hashes, IP hashes and decline reasons planted in the test data do not appear in the output.
+
+### D62. The stats response is cacheable for 60 seconds
+- **Considered:** no caching; a rate limit like the demo page's.
+- **Why:** the page is public and unauthenticated, and every uncached load is a database query. A `Cache-Control` header lets browsers and the CDN reuse a response, which caps the query rate without another limit function. Numbers that are a minute old are fine for a usage page.
+
+### D63. No chart library on the stats page
+- **Considered:** Chart.js or similar from a CDN.
+- **Why:** the page has one bar chart and two ranked lists. Bars are `div`s with a height; ranked lists are tables with a bar cell. That is a small amount of JavaScript students can read, no build step, no third-party script, and the tables are their own text alternative. Bars use one color throughout: the rows are named, so color has nothing to add.
+- **Design:** same header, tabs, tokens, spacing scale, `.card` and `.eyebrow` as the Ask page. `stats.css` holds only what this page adds.
+
 ## What broke and how we fixed it
 
 ### Phase 0
@@ -141,3 +288,25 @@ A running log: what we decided, what else we considered, and why. Then what brok
 - **Blank lines in `.env` overrode defaults.** `JEV_BASE_URL=` with nothing after it was read as an empty string, not as "use the default", so the Jev client would have called a URL with no host. Fix: `env_ignore_empty=True` in the settings class. Lesson: an unset variable and an empty one are different things, and config code has to choose what empty means.
 - **The planned similarity threshold was wrong.** 0.30 was written down before any data existed and would have let near-scope questions through. Fix: measure, then choose (D26).
 - **The plan assumed Anthropic SDK 1.x; 2.8 was current.** Sampling parameters are gone from the method signatures entirely, and a truncated structured output raises a pydantic error from inside the SDK rather than an API error. Fix: read the installed package before writing against it, and treat every failure at the route boundary as an upstream error.
+
+### Thin slices
+- **`usage_log` rejected every row from the new surfaces, silently.** In the local runs the MCP tool calls and the eval both worked, but each insert failed with `violates check constraint "usage_log_surface_check"`: migration `20261111200000_open_surfaces.sql` had not been applied to the database yet. `log_usage` swallows insert failures by design (D31), so nothing looked wrong from the client. The consequence is worse than a missing log line: the per-minute limit counts `usage_log` rows, so until the migration was applied MCP calls were not rate limited at all. Fix: apply the migration before deploying the code that needs it. The eval script also counts failed log writes and prints one line saying its spend is not being counted. Lesson: a limit that counts log rows is only as good as the log write, and a swallowed error still needs to be visible somewhere.
+- **A repeated Confirm made the model retract a real booking.** Replaying the same confirmation correctly booked nothing new, but `book_slot` answered `slot_taken` and the model, which sees earlier turns only as text, told the patient the first booking had not happened. Fix in the database: when the same visitor books the same slot again, `book_slot` returns the original booking. A retry after a lost response is now idempotent.
+- **A check asked for more than the question did.** "How do I get a copy of my medical records?" required the fact "within 30 days". The model answered the question that was asked (fill out the records request form, on the portal or at the front desk) and left out the turnaround in two of three runs. The app was right and the check was wrong: the fact was replaced with one the question actually calls for (the form is on the patient portal). Lesson: a required fact must be something every correct answer contains. Otherwise the eval is flaky, people learn to ignore red, and it stops being an alarm.
+- **The import everyone knows no longer exists.** `from mcp.server.fastmcp import FastMCP` raises in MCP SDK 2.x. Found by checking the installed version (2.3.0) and its docs before writing anything. Fix: `MCPServer` (D47).
+- **Creating the MCP server turned on INFO logging for the whole app.** `MCPServer()` calls `logging.basicConfig(level="INFO")` when constructed, which is at import time here. The first run printed a line for every outgoing HTTP request. Fix: `MCPServer(..., log_level="WARNING")`. The SDK still adds one handler to the root logger; that is harmless but worth knowing if log formatting ever looks different.
+- **The textbook mount fails twice.** A throwaway app with `app.mount("/mcp", mcp.streamable_http_app(...))` and no lifespan answered `POST /mcp` with a 307 redirect to `/mcp/`, and `POST /mcp/` with a 500 (`Task group is not initialized`). Both were expected from the SDK docs and both are designed out (D49, D50).
+- **A GET would have held a function open.** Reading the SDK's transport showed that stateless mode still serves `GET /mcp` as an endless event stream. Caught before it ran anywhere. Fix: POST-only routes (D50).
+- **The default Host check rejects real hostnames.** Confirmed locally: `Host: evil.example` gets `421 Invalid Host header`, and so would the Vercel hostname with the defaults. Fix: configured deliberately (D51).
+- **The MCP `check_availability` tool could not run for real in the local run.** `app/schedule.py` and its Postgres function arrived after the MCP slice was recorded, so the transcript in `docs/mcp-transcript-local.md` uses a stub for that tool and says so. Unit tests stub the module. The later run against the deployed server (`docs/mcp-transcript-claude-code.md`) shows the real tool.
+- **The first SQL check parsed slot ids by splitting on ":"**, which also splits the time. Fix: split on the first colon only, the same rule `parse_slot_id` uses.
+- **A flex-basis became a height.** The intro text on the stats page had `flex: 1 1 28rem` to sit beside the window buttons. On a phone the row becomes a column, and the same basis turned into 28rem of empty height, which pushed the error card off the first screen. Fix: reset the flex value in the small-screen rule. It was caught only by looking at a 390 px screenshot of the error state.
+- **Headless Chrome will not open a window narrower than 500 px**, so a "390 px" screenshot was really 500. Fix: load the page inside a 390 px iframe and compare the page's `scrollWidth` to its `innerWidth`.
+- **Non-ASCII characters slipped into source.** A dash range in the eval's `normalize` and two test strings were meant to be written as escapes but landed in the files as literal characters, which are invisible in review. They are escapes again.
+- **Local ports were already taken, three times.** A scratch server's port and two tries at the Docker port for `scripts/check_migrations.sh` collided with other things running on the machine. Fix: pick another port. Lesson: this is why the port is a variable (`CHECK_PORT`).
+- **Two parallel build sessions shared one scratch folder and one file name.** Both wrote a `scratch_app.py`; the second overwrote the first, so one server silently started serving the other slice's page, and a kill-by-name may have stopped the wrong server. Fix: a private subfolder, a unique module name and a pid file. Lesson: shared temp space needs namespacing, and "kill by pattern" is not safe on a shared machine.
+- **Not broken, but worth knowing:** `agent.py` uses `zoneinfo` to put today's clinic date in the system prompt, which needs a timezone database on the host. macOS has one. The `tzdata` package is in the dependencies so the deploy does not rely on the host having one.
+
+**Checked on the deployed app (Nov 11, 2026):** `/book`, `/stats` and `/api/stats` load; `GET /mcp` answers 405; a `tools/list` request to `POST /mcp` answers 200 with both tools and no redirect; and the stats page counts `booking` and `mcp` rows, so the migration from the first item is applied and MCP tool calls are being logged. A Claude Code session connected to the live server and called both tools with real results (`docs/mcp-transcript-claude-code.md`).
+
+**Not yet verified on the deployed app:** that `x-forwarded-for` carries the caller's address for MCP calls, and that a claude.ai connector connects and calls a tool. The `eval` job in GitHub Actions has not passed yet: its first runs stopped with "Missing credentials" because the five repository secrets were not set (the `test` job passed).

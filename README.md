@@ -4,7 +4,17 @@
 
 The reference app for the Applied AI Engineer Bootcamp. It starts as a question-answering assistant over a fictional clinic's patient handbook and grows with the course: retrieval-augmented generation (RAG) first, then agents and MCP, then evals, guardrails and production operations.
 
-**Live:** https://clinic-assistant-mocha.vercel.app. Ask the fictional clinic a question and watch every step: the judgments, the retrieved passages, the answer and the exact prompt. See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works, [DECISIONS.md](DECISIONS.md) for why it works that way and [DEMO.md](DEMO.md) for how to show it.
+**Live:** https://clinic-assistant-mocha.vercel.app. Ask the fictional clinic a question and watch every step: the judgments, the retrieved passages, the answer and the exact prompt.
+
+Three more pieces sit on the same app:
+
+| Piece | Where | What it shows |
+|---|---|---|
+| Booking agent | https://clinic-assistant-mocha.vercel.app/book | an agent that can look up open times and propose one, but only code books, and only after you press Confirm |
+| MCP server | `https://clinic-assistant-mocha.vercel.app/mcp` | the handbook search and the open-slot lookup as tools for any MCP client. [docs/mcp.md](docs/mcp.md) shows how to connect |
+| Evals and usage stats | https://clinic-assistant-mocha.vercel.app/stats | a public page of usage numbers from the request log. The answer eval behind it runs in CI on every push to `main` |
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works, [DECISIONS.md](DECISIONS.md) for why it works that way and [DEMO.md](DEMO.md) for how to show it.
 
 ## Three models, one job each
 
@@ -52,7 +62,10 @@ supabase db push
 ```bash
 uv run python scripts/ingest.py           # chunk, embed and load handbook/*.md
 uv run python scripts/eval_retrieval.py   # does the right section rank first for each question?
+uv run python scripts/eval_answers.py     # is the final answer right? ten questions, real models, needs .env
 ```
+
+CI (`.github/workflows/ci.yml`) runs the lint and unit tests on every push and pull request, and `eval_answers.py` on pushes to `main`.
 
 ## The class endpoint
 
@@ -84,11 +97,12 @@ Pushing to `main` deploys to Vercel. Environment variables live in the Vercel pr
 ## Layout
 
 ```
-app/            FastAPI app (main.py is the Vercel entry point); app/static/ is the demo page
+app/            FastAPI app (main.py is the Vercel entry point); app/static/ holds the three pages
 handbook/       the fictional clinic's patient handbook, one Markdown file per topic
-eval/           questions with the handbook section that should answer each
+eval/           questions with the section that should answer each, and with the facts a right answer needs
 tests/          pytest; HTTP is mocked with respx, integration tests are marked
 supabase/       migrations and SQL checks
 scripts/        ingest, evals, tokens and end-to-end checks
-docs/           screenshots and notes
+docs/           the MCP guide, recorded MCP runs and screenshots
+.github/        the CI workflow
 ```
