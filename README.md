@@ -4,7 +4,7 @@
 
 The reference app for the Applied AI Engineer Bootcamp. It starts as a question-answering assistant over a fictional clinic's patient handbook and grows with the course: retrieval-augmented generation (RAG) first, then agents and MCP, then evals, guardrails and production operations.
 
-**Status:** Phase 0 (skeleton, database, deploy pipeline). See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works and [DECISIONS.md](DECISIONS.md) for why it works that way.
+**Status:** Phase 0 complete (Nov 10, 2026): database migrated, deployed at https://clinic-assistant-mocha.vercel.app ([/health](https://clinic-assistant-mocha.vercel.app/health)). See [ARCHITECTURE.md](ARCHITECTURE.md) for how it works and [DECISIONS.md](DECISIONS.md) for why it works that way.
 
 ## Three models, one job each
 
