@@ -100,6 +100,16 @@ def hash_ip(ip: str) -> str:
     return hmac.new(key, ip.encode(), hashlib.sha256).hexdigest()
 
 
+def client_ip(request) -> str:
+    """The caller's address. Behind Vercel's proxy it is the first hop of x-forwarded-for."""
+    if request is None:
+        return "unknown"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 async def authorize(token: str | None) -> AccessDecision:
     """Allow or deny a class-endpoint request. Takes the bare token, without "Bearer "."""
     # Anything that isn't shaped like a token can't be in the table: skip the round trip

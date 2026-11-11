@@ -85,3 +85,13 @@ class AccessDecision(BaseModel):
     ) = None
     token_id: str | None = None
     retry_after_seconds: int | None = None
+
+
+class Slot(BaseModel):
+    """One open appointment time. slot_id is what the booking tools pass around."""
+
+    slot_id: str
+    provider: str
+    visit_type: str
+    starts_at: str  # ISO 8601 with the clinic's UTC offset
+    display: str  # e.g. "Tue Dec 1, 9:30 AM with Dr. Patel"

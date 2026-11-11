@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Usage stats: Family Clinic Assistant</title>
+  <meta name="description" content="Requests, cost, speed and decisions for the Family Clinic Assistant, counted from its usage log. Fictional clinic.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23003087'/%3E%3Cpath d='M13 7h6v6h6v6h-6v6h-6v-6H7v-6h6z' fill='%23B9D9EB'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Schibsted+Grotesk:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/stats.css">
+  <script src="/static/stats.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the numbers</a>
+
+  <header class="site-header">
+    <div class="wrap header-row">
+      <div class="brand">
+        <p class="eyebrow">Observability</p>
+        <h1>Family Clinic Assistant</h1>
+        <div class="header-rule"></div>
+        <p class="tagline">Every request leaves a row in a log. These are the numbers an engineer watches.</p>
+      </div>
+      <p class="notice">Fictional clinic. Not medical advice.</p>
+    </div>
+    <nav class="wrap tabs" aria-label="Pages">
+      <a class="tab" href="/">Ask the handbook</a>
+      <a class="tab" href="/book">Book an appointment</a>
+      <a class="tab" href="/stats" aria-current="page">Usage stats</a>
+    </nav>
+  </header>
+
+  <main class="wrap" id="main">
+    <section class="block" aria-labelledby="title-usage">
+      <div class="block-head">
+        <div>
+          <h2 id="title-usage">Usage</h2>
+          <p class="step-note">Every request to this app writes one row to a log: how long it took, how many tokens it used and what the code decided. This page counts those rows. Watching a running system through numbers like these is called observability.</p>
+        </div>
+        <!-- One window for the whole page: every number below is counted over the same days. -->
+        <div class="range" role="group" aria-label="Time window">
+          <button type="button" class="range-button" data-days="7" aria-pressed="false">7 days</button>
+          <button type="button" class="range-button" data-days="30" aria-pressed="true">30 days</button>
+          <button type="button" class="range-button" data-days="90" aria-pressed="false">90 days</button>
+        </div>
+      </div>
+
+      <div id="status" class="status" role="status">
+        <div class="status-bar" aria-hidden="true"></div>
+        <p>Counting requests...</p>
+      </div>
+
+      <div id="error" class="error card" role="alert" hidden>
+        <p class="error-title">The usage numbers could not be loaded.</p>
+        <p id="error-help" class="error-help"></p>
+        <div class="error-row">
+          <button id="retry-button" class="retry-button" type="button">Try again</button>
+          <code id="error-code" class="error-code"></code>
+        </div>
+      </div>
+
+      <div id="empty" class="empty card" hidden>
+        <p class="eyebrow">Nothing to count yet</p>
+        <p id="empty-title" class="empty-title"></p>
+        <p class="empty-help">Each question on the <a href="/">Ask the handbook</a> page adds a row to the log and shows up here within a minute. Ask one, or choose a longer window.</p>
+      </div>
+    </section>
+
+    <!-- Filled in by stats.js. The sentences are fixed; only the numbers change. -->
+    <div id="stats" hidden>
+      <section class="block" aria-labelledby="title-glance">
+        <h2 id="title-glance">At a glance</h2>
+        <p id="window-note" class="step-note"></p>
+
+        <div class="tiles">
+          <div class="tile card">
+            <p class="eyebrow">Requests</p>
+            <p id="tile-requests" class="tile-value"></p>
+            <p id="tile-requests-detail" class="tile-detail"></p>
+            <p class="tile-why">Every call to any part of the app, refused ones included. Traffic is the baseline: a spike or a sudden silence is often the first sign that something changed.</p>
+          </div>
+
+          <div class="tile card">
+            <p class="eyebrow">Est. cost this month</p>
+            <p id="tile-cost" class="tile-value"></p>
+            <div class="tile-detail">
+              <p id="tile-cost-detail"></p>
+              <!-- The same track and fill as the judgment meters on the Ask page. -->
+              <div class="meter-track" aria-hidden="true"><div id="tile-cost-fill" class="meter-fill"></div></div>
+            </div>
+            <p class="tile-why">Tokens used times the generative model's price. When the month's total reaches the cap the app stops answering, so a bug or a bot cannot run up a bill.</p>
+          </div>
+
+          <div class="tile card">
+            <p class="eyebrow">Median answer time</p>
+            <p id="tile-latency" class="tile-value"></p>
+            <p id="tile-latency-detail" class="tile-detail"></p>
+            <p class="tile-why">Half of answered questions finish faster than the median, and 95 in 100 finish faster than the 95th percentile (p95). An average hides the slow ones, so engineers watch the slow end.</p>
+          </div>
+
+          <div class="tile card">
+            <p class="eyebrow">Decline rate</p>
+            <p id="tile-decline" class="tile-value"></p>
+            <p id="tile-decline-detail" class="tile-detail"></p>
+            <p class="tile-why">The share of questions the app chose not to answer. A jump means the handbook has gaps or a threshold is too strict. Near zero can mean it answers things it should not.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="block" aria-labelledby="title-daily">
+        <h2 id="title-daily">Requests per day</h2>
+        <p class="step-note">One bar per day, in Eastern time. The shape shows when the app is used, and an unusual day stands out against its neighbors.</p>
+
+        <div class="chart card">
+          <p id="chart-readout" class="chart-readout"></p>
+          <div class="chart-grid">
+            <div id="chart-axis" class="chart-axis" aria-hidden="true"></div>
+            <div class="chart-plot">
+              <div id="chart-bars" class="chart-bars" role="img"></div>
+            </div>
+            <div id="chart-dates" class="chart-dates" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <!-- The text alternative: the same numbers as the bars. Styled like the prompt toggle. -->
+        <details class="prompt">
+          <summary>
+            <span class="when-closed">Show the daily numbers as a table</span>
+            <span class="when-open">Hide the table</span>
+          </summary>
+          <div class="table-scroll card" tabindex="0" role="region" aria-labelledby="title-daily">
+            <table class="data-table">
+              <thead><tr><th scope="col">Day</th><th scope="col" class="num">Requests</th><th scope="col" class="num">Est. cost</th></tr></thead>
+              <tbody id="daily-rows"></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="block" aria-labelledby="title-breakdown">
+        <h2 id="title-breakdown">Where it goes</h2>
+        <p class="step-note">A total says how much. A breakdown says where to look.</p>
+
+        <div class="pair">
+          <div class="breakdown card">
+            <p class="eyebrow">Requests by surface</p>
+            <table class="data-table bar-table">
+              <thead><tr><th scope="col">Surface</th><th scope="col" class="bar-col"><span class="sr-only">Share of requests</span></th><th scope="col" class="num">Requests</th><th scope="col" class="num">Est. cost</th></tr></thead>
+              <tbody id="surface-rows"></tbody>
+            </table>
+            <p class="breakdown-why">A surface is one way into the app. All of them draw on one budget, so this shows which one is spending it. <span id="token-note"></span></p>
+          </div>
+
+          <div class="breakdown card">
+            <p class="eyebrow">What happened to demo questions</p>
+            <table class="data-table bar-table">
+              <thead><tr><th scope="col">Outcome</th><th scope="col" class="bar-col"><span class="sr-only">Share of demo requests</span></th><th scope="col" class="num">Requests</th><th scope="col" class="num">Share</th></tr></thead>
+              <tbody id="outcome-rows"></tbody>
+            </table>
+            <p id="outcome-why" class="breakdown-why"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="block block-last" aria-labelledby="title-speed">
+        <h2 id="title-speed">Speed</h2>
+        <p class="step-note">The two surfaces do different work, so their times are kept apart: a demo answer runs retrieval, two judgments and generation, and a class endpoint completion is one model call of any length.</p>
+
+        <div class="table-scroll card">
+          <table class="data-table">
+            <thead><tr><th scope="col">Measured</th><th scope="col" class="num">Count</th><th scope="col" class="num">Median</th><th scope="col" class="num">p95</th></tr></thead>
+            <tbody id="latency-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <p class="meta">Counted in Postgres from the usage log and cached for a minute. Cost is an estimate for the generative model only. The log holds no question text and no IP addresses, and this page shows totals only.</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p class="wrap">The clinic, its handbook and every patient detail on this page are made up for teaching. In a real emergency, call 911.</p>
+  </footer>
+</body>
+</html>

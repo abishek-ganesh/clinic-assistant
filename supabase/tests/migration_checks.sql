@@ -58,7 +58,7 @@ begin
   raise notice 'ALL FUNCTION CHECKS PASSED';
 end $$;
 
--- authorize_demo_request: every outcome, counted per IP on the demo surface only
+-- authorize_demo_request: every outcome, counted per IP across the open surfaces
 do $$
 declare r jsonb;
 begin
@@ -75,7 +75,7 @@ begin
   insert into usage_log (surface, client_ip_hash, outcome)
   select 'demo', 'ip1', 'denied' from generate_series(1,10);
   insert into usage_log (surface, client_ip_hash, outcome)
-  select 'endpoint', 'ip1', 'completed' from generate_series(1,10);
+  select 'endpoint', null, 'completed' from generate_series(1,10);
   insert into usage_log (surface, client_ip_hash, outcome)
   select 'demo', 'ip2', 'answered' from generate_series(1,10);
   insert into usage_log (surface, client_ip_hash, outcome, created_at)
@@ -83,10 +83,10 @@ begin
   r := authorize_demo_request('ip1');
   assert (r->>'allowed')::boolean and (r->>'remaining_minute')::int = 2, 'wrong rows counted: ' || r::text;
 
-  insert into usage_log (surface, client_ip_hash, outcome) values ('demo', 'ip1', 'answered'), ('demo', 'ip1', 'declined');
+  insert into usage_log (surface, client_ip_hash, outcome) values ('demo', 'ip1', 'answered'), ('booking', 'ip1', 'replied');
   r := authorize_demo_request('ip1');
   assert (r->>'allowed')::boolean and (r->>'remaining_minute')::int = 0, r::text;
-  insert into usage_log (surface, client_ip_hash, outcome) values ('demo', 'ip1', 'emergency');
+  insert into usage_log (surface, client_ip_hash, outcome) values ('mcp', 'ip1', 'tool_call');
   r := authorize_demo_request('ip1');
   assert r->>'reason' = 'rate_limit_minute' and (r->>'retry_after_seconds')::int = 60, r::text;
   assert not (r->>'allowed')::boolean, r::text;

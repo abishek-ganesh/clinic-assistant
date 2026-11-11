@@ -1,0 +1,211 @@
+/* Booking page. Loaded after styles.css: tokens, the header, the step rail, cards, the
+   message form, chips, status and error states all come from there.
+   Order: layout, conversation, tool trace, confirmation, booking, small screens. */
+
+/* Step 1: conversation on the left, the agent's tool calls on the right, equal columns */
+
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+/* Each column is a label, then a log. The logs share one height so their edges line up. */
+.chat, .trace {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.chat-log, .trace-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 22rem;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+.trace-log { height: auto; min-height: 22rem; max-height: 31.6rem; }
+
+.chat .ask-form { margin-top: var(--space-2); }
+
+.chat-empty { color: var(--slate); font-size: 0.9rem; }
+
+/* Conversation: the visitor's turns sit right on a tint, the agent's sit left on white */
+
+.bubble {
+  max-width: 88%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.bubble .eyebrow { display: block; margin-bottom: var(--space-1); }
+
+.bubble-user { align-self: flex-end; background: var(--tint); }
+.bubble-agent { align-self: flex-start; background: var(--white); }
+/* A turn written by code (a proposal, a fixed message) is dashed, like a declined answer */
+.bubble-code { border: 1px dashed var(--slate); }
+
+/* Tool trace: one group per turn, one card per tool call. The 6px bar says what code did. */
+
+.trace-turn { display: grid; gap: var(--space-2); }
+.trace-turn + .trace-turn { padding-top: var(--space-3); border-top: 1px solid var(--line); }
+
+.tool-call {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--navy);
+  border-radius: 0 var(--radius-small) var(--radius-small) 0;
+}
+.tool-call[data-kind="proposed"] { border-left-color: var(--accent); }
+.tool-call[data-kind="refused"] { border-left-color: var(--alarm); }
+
+.tool-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.tool-name {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.tool-tag {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--navy);
+  border-radius: 99px;
+  color: var(--navy);
+  letter-spacing: 0.06em;
+}
+.tool-call[data-kind="proposed"] .tool-tag { border-color: var(--accent); color: var(--accent); }
+.tool-call[data-kind="refused"] .tool-tag { border-color: var(--alarm); color: var(--alarm); }
+
+.tool-io {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  margin-top: var(--space-3);
+}
+.tool-io .eyebrow { padding-top: var(--space-2); }
+
+.tool-io pre {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  max-height: 11rem;
+  overflow: auto;
+  background: var(--navy-deep);
+  color: var(--code-fg);
+  border-radius: var(--radius-small);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.trace-none { color: var(--slate); font-size: 0.85rem; }
+
+/* Step 2: the proposal. Violet marks the one place a person decides. */
+
+.proposal, .booked {
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: 6px solid var(--accent);
+  scroll-margin: var(--space-4);
+}
+.booked { border-top-color: var(--navy); }
+
+.proposal-slot, .booked-slot {
+  margin-top: var(--space-2);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.75rem;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--navy);
+}
+.booked-slot { font-size: 1.35rem; }
+
+.proposal-type { margin-top: var(--space-1); color: var(--slate); }
+
+.proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+/* The quieter partner of .ask-button: same size and shape, outline instead of fill */
+.outline-button {
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--navy);
+  border-radius: var(--radius-small);
+  background: var(--white);
+  color: var(--navy);
+  font-family: var(--font-display);
+  font-weight: 700;
+  cursor: pointer;
+}
+.outline-button:hover { background: var(--tint); }
+.proposal-actions .outline-button { padding: var(--space-2) var(--space-6); font-size: 1.05rem; }
+
+.proposal-why {
+  margin-top: var(--space-5);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+  font-size: 0.9rem;
+  color: var(--slate);
+}
+
+/* Step 3: the booking. The code is the largest thing on the page once it exists. */
+
+.booked-code {
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 2.2rem;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  color: var(--navy);
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+}
+.meta-row .meta { flex: 1; }
+
+/* Small screens: one column, the trace under the conversation */
+
+@media (max-width: 56rem) {
+  .book-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
+  .trace-log { min-height: 0; max-height: 26rem; }
+  .chat-log { height: 20rem; }
+}
+
+@media (max-width: 40rem) {
+  .chat-log, .trace-log { padding: var(--space-3); }
+  .bubble { max-width: 94%; }
+  .tool-io { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .tool-io .eyebrow { padding-top: var(--space-2); }
+  .proposal, .booked { padding: var(--space-4); }
+  .proposal-slot { font-size: 1.4rem; }
+  .booked-code { font-size: 1.8rem; }
+  .proposal-actions > * { flex: 1; }
+  .meta-row { padding-left: 0; }
+}

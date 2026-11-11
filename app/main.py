@@ -15,9 +15,11 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import pipeline
-from app.access import DENIALS, authorize, authorize_demo, hash_ip, log_usage
+from app.access import DENIALS, authorize, authorize_demo, client_ip, hash_ip, log_usage
+from app.booking_routes import router as booking_router
 from app.config import get_settings
 from app.generate import chat, chat_stream
+from app.mcp_server import mcp_routes
 from app.models import AccessDecision, ChatRequest, ChatResult
 from app.openai_compat import (
     STREAM_DONE,
@@ -29,6 +31,7 @@ from app.openai_compat import (
     stream_chunk,
     translate_request,
 )
+from app.stats_routes import router as stats_router
 from app.thresholds import MAX_QUESTION_CHARS
 
 logger = logging.getLogger(__name__)
@@ -40,18 +43,14 @@ UPSTREAM_MESSAGE = "A model provider failed to respond. Try again in a moment."
 
 app = FastAPI(title="Family Clinic Assistant")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.include_router(booking_router)  # GET /book, POST /api/book
+app.include_router(stats_router)  # GET /stats, GET /api/stats
+# The MCP server at /mcp: plain routes, so it needs no startup hook (see app/mcp_server.py)
+app.router.routes.extend(mcp_routes)
 
 
 def _elapsed_ms(started: float) -> int:
     return round((time.perf_counter() - started) * 1000)
-
-
-def _client_ip(request: Request) -> str:
-    """The caller's address. Behind Vercel's proxy it is the first hop of x-forwarded-for."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 def _retry_headers(decision: AccessDecision) -> dict[str, str]:
@@ -99,7 +98,7 @@ async def api_ask(request: Request) -> JSONResponse:
     question = question.strip()
 
     # If the limit check itself fails we refuse, rather than serve requests nobody is counting
-    ip = _client_ip(request)
+    ip = client_ip(request)
     try:
         ip_hash = hash_ip(ip)
         decision = await authorize_demo(ip)

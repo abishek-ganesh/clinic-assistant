@@ -1,0 +1,354 @@
+// Booking page.
+// Each turn goes to POST /api/book and the page draws what came back: the reply, every tool
+// call the model made, and any proposal waiting for a person to confirm.
+// The server keeps no conversation, so the page holds the text turns and sends them back.
+// Model output is untrusted, so everything is inserted with textContent.
+
+const MAX_MESSAGE_CHARS = 500;
+
+// What to tell the visitor for each error code the API can return.
+const ERRORS = {
+  invalid_request: {
+    title: "That could not be sent.",
+    help: "Messages need between 1 and 500 characters, and a conversation can only get so long. Edit your message, or start over.",
+    retry: false,
+  },
+  rate_limited: {
+    title: "Too many messages in a short time.",
+    help: "The demo allows a few requests per minute from each network. Wait about a minute, then try again.",
+    retry: true,
+  },
+  spend_cap: {
+    title: "The demo has reached its monthly budget.",
+    help: "It is paused until the budget resets or is raised, so retrying will not help. Let the instructor know.",
+    retry: false,
+  },
+  kill_switch: {
+    title: "The demo is switched off right now.",
+    help: "The instructor has paused it. Try again later, or ask them to switch it back on.",
+    retry: false,
+  },
+  upstream_error: {
+    title: "The model or the schedule did not respond.",
+    help: "Your message was fine and nothing was booked by this attempt. This usually clears up in a few seconds, so try again.",
+    retry: true,
+  },
+  network: {
+    title: "Could not reach the server.",
+    help: "Check your internet connection, then try again.",
+    retry: true,
+  },
+  unknown: {
+    title: "Something went wrong.",
+    help: "The server sent a response this page did not understand. Try again, and tell the instructor if it keeps happening.",
+    retry: true,
+  },
+};
+
+// Used when an error response has no recognizable code.
+const CODE_FOR_STATUS = { 422: "invalid_request", 429: "rate_limited", 502: "upstream_error", 503: "kill_switch" };
+
+const VISIT_LABELS = {
+  returning: "Returning patient visit, 20 minutes",
+  physical: "Annual physical, 40 minutes",
+  telehealth: "Telehealth video visit, 20 minutes",
+};
+
+// Who wrote the reply, by outcome. A proposal and the fixed messages are written by code.
+const CODE_WRITTEN = { proposed: "Written by code", refused: "Written by code", step_limit: "Written by code" };
+
+const NOTES = {
+  confirmIdle: "The model cannot book. When it has a slot for you it can only propose it, and the proposal waits here for you to confirm or decline.",
+  confirmWaiting: "The agent stopped and is waiting for you. Nothing is booked until you press Confirm.",
+  bookedIdle: "After you confirm, code checks the signature and inserts one row. The database allows one booking per provider and start time, so a slot cannot be booked twice.",
+  bookedDone: "Done. This appointment exists only in the demo's made-up schedule.",
+};
+
+const $ = (id) => document.getElementById(id);
+
+const form = $("book-form");
+const messageBox = $("message");
+const chips = document.querySelectorAll(".chip");
+const buttons = [$("send-button"), $("confirm-button"), $("decline-button"), ...chips];
+
+// The whole conversation state. history is what the server sent back last turn.
+let history = [];
+let proposal = null;
+let turnCount = 0;
+let isLoading = false;
+let lastPayload = null;
+let timer = null;
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendMessage(messageBox.value);
+});
+
+messageBox.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    sendMessage(messageBox.value);
+  }
+});
+
+messageBox.addEventListener("input", updateCharCount);
+
+chips.forEach((chip) => {
+  chip.addEventListener("click", () => sendMessage(chip.textContent));
+});
+
+$("confirm-button").addEventListener("click", () => {
+  if (isLoading || !proposal) return;
+  addBubble("user", `Confirm: ${proposal.slot.display}`, "Button press");
+  // The signed confirmation goes back exactly as the server issued it
+  send({ action: "confirm", confirmation: proposal.confirmation });
+});
+
+$("decline-button").addEventListener("click", () => {
+  if (isLoading || !proposal) return;
+  addBubble("user", `Decline: ${proposal.slot.display}`, "Button press");
+  send({ action: "decline" });
+});
+
+$("retry-button").addEventListener("click", () => send(lastPayload));
+$("reset-button").addEventListener("click", startOver);
+$("start-over").addEventListener("click", startOver);
+
+function sendMessage(rawMessage) {
+  if (isLoading) return;
+  const message = rawMessage.trim();
+  if (message.length < 1 || message.length > MAX_MESSAGE_CHARS) {
+    showError("invalid_request", null);
+    messageBox.focus();
+    return;
+  }
+  addBubble("user", message);
+  messageBox.value = "";
+  updateCharCount();
+  send({ action: "message", message });
+}
+
+// One turn: send the earlier turns plus this one, then draw the response or an error.
+async function send(payload) {
+  if (isLoading || !payload) return;
+  lastPayload = payload;
+  startLoading();
+
+  let response;
+  let body = null;
+  try {
+    response = await fetch("/api/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ history, ...payload }),
+    });
+    body = await response.json().catch(() => null);
+  } catch {
+    stopLoading();
+    showError("network", null);
+    return;
+  }
+
+  stopLoading();
+  if (!response.ok) {
+    const code = body?.error?.code ?? CODE_FOR_STATUS[response.status] ?? "unknown";
+    showError(code, response.status);
+  } else if (!body || !body.outcome || !Array.isArray(body.history)) {
+    showError("unknown", response.status);
+  } else {
+    showTurn(body);
+  }
+}
+
+// Draw one /api/book response.
+function showTurn(data) {
+  history = data.history;
+  turnCount += 1;
+
+  addBubble("agent", data.reply, CODE_WRITTEN[data.outcome] ?? "Agent", Boolean(CODE_WRITTEN[data.outcome]));
+  addTraceTurn(data);
+  showProposal(data.proposal);
+  if (data.booking) showBooking(data.booking);
+
+  $("prompt").hidden = false;
+  $("prompt-system").textContent = data.prompt.system;
+  $("prompt-tools").textContent = JSON.stringify(data.prompt.tools, null, 2);
+
+  const calls = data.model_calls === 1 ? "1 model call" : `${data.model_calls} model calls`;
+  $("meta").textContent =
+    `${data.model} · ${calls} · ${data.input_tokens} in + ${data.output_tokens} out tokens · ${data.latency_ms} ms`;
+  $("start-over").hidden = false;
+
+  // Tell screen readers what happened. The reply itself is announced by the chat log.
+  const status = $("status");
+  status.classList.add("sr-only");
+  status.hidden = false;
+  $("status-text").textContent = data.proposal
+    ? "The agent proposed a slot. Confirm and Decline buttons are in step 2."
+    : data.booking
+      ? `Booked. Confirmation code ${data.booking.confirmation_code}.`
+      : "The agent replied.";
+
+  if (data.booking) scrollIntoViewIfBelow($("booked"));
+  else if (data.proposal) scrollIntoViewIfBelow($("proposal"));
+}
+
+// A turn in the conversation column. label names who wrote it when that is worth saying.
+function addBubble(who, text, label, dashed) {
+  const log = $("chat-log");
+  log.querySelector(".chat-empty")?.remove();
+  const item = el("li", `bubble bubble-${who}${dashed ? " bubble-code" : ""}`);
+  if (label) item.append(el("span", "eyebrow", label));
+  item.append(text);
+  log.append(item);
+  log.scrollTop = log.scrollHeight;
+}
+
+// The tool calls of one turn, in the order the model made them.
+function addTraceTurn(data) {
+  const log = $("trace-log");
+  log.querySelector(".chat-empty")?.remove();
+
+  const turn = el("li", "trace-turn");
+  const seconds = (data.latency_ms / 1000).toFixed(1);
+  turn.append(el("p", "eyebrow", `Turn ${turnCount} · ${data.steps.length} tool ${data.steps.length === 1 ? "call" : "calls"} · ${seconds} s`));
+  if (data.steps.length === 0) {
+    turn.append(el("p", "trace-none", "No tool calls. The model replied from the conversation alone."));
+  }
+  for (const step of data.steps) turn.append(toolCall(step));
+
+  log.append(turn);
+  // Start of the newest turn, not the very bottom, so its first tool call is readable
+  log.scrollTop = turn.offsetTop - log.offsetTop - 12;
+}
+
+// One tool call: its name, what code did with it, the arguments and the result.
+function toolCall(step) {
+  const [kind, tag] = describeStep(step);
+  const card = el("div", "tool-call");
+  card.dataset.kind = kind;
+
+  const head = el("div", "tool-head");
+  head.append(el("span", "tool-name", step.tool), el("span", "tool-tag eyebrow", tag));
+
+  const io = el("div", "tool-io");
+  io.append(
+    el("span", "eyebrow", "Input"),
+    el("pre", "", JSON.stringify(step.input, null, 2)),
+    el("span", "eyebrow", "Result"),
+    el("pre", "", JSON.stringify(step.result, null, 2)),
+  );
+  io.querySelectorAll("pre").forEach((pre) => { pre.tabIndex = 0; });
+
+  card.append(head, io);
+  return card;
+}
+
+function describeStep(step) {
+  if (step.is_error) return ["refused", step.tool === "book_slot" ? "Refused by code" : "Rejected by code"];
+  if (step.tool === "propose_slot") return ["proposed", "Ended the turn"];
+  if (step.tool === "book_slot") return ["ran", "Booked by code"];
+  return ["ran", "Ran"];
+}
+
+// Step 2: show the pending proposal, or fall back to the explanation when there is none.
+function showProposal(next) {
+  proposal = next;
+  $("proposal").hidden = !proposal;
+  $("step-confirm").classList.toggle("step-ghost", !proposal);
+  $("confirm-note").textContent = proposal ? NOTES.confirmWaiting : NOTES.confirmIdle;
+  if (!proposal) return;
+  $("proposal-slot").textContent = proposal.slot.display;
+  $("proposal-type").textContent = VISIT_LABELS[proposal.slot.visit_type] ?? proposal.slot.visit_type;
+  $("proposal-signed").textContent = JSON.stringify(proposal.confirmation, null, 2);
+}
+
+// Step 3: the booking code made, with the code the database returned.
+function showBooking(booking) {
+  $("booked").hidden = false;
+  $("step-booked").classList.remove("step-ghost");
+  $("booked-note").textContent = NOTES.bookedDone;
+  $("booked-code").textContent = booking.confirmation_code;
+  $("booked-slot").textContent = booking.display;
+}
+
+function startOver() {
+  if (isLoading) return;
+  history = [];
+  turnCount = 0;
+  lastPayload = null;
+  showProposal(null);
+  $("booked").hidden = true;
+  $("step-booked").classList.add("step-ghost");
+  $("booked-note").textContent = NOTES.bookedIdle;
+  $("chat-log").replaceChildren(el("li", "chat-empty", "Nothing yet. Type a message below or pick an example."));
+  $("trace-log").replaceChildren(el("li", "chat-empty", "Each tool the model calls shows up here with its arguments and the result code sent back."));
+  $("error").hidden = true;
+  $("prompt").hidden = true;
+  $("status").hidden = true;
+  $("start-over").hidden = true;
+  $("meta").textContent = "";
+  messageBox.focus();
+}
+
+// Loading: the page cannot see which tool the server is running, so it shows elapsed time only.
+function startLoading() {
+  isLoading = true;
+  setControlsDisabled(true);
+  $("error").hidden = true;
+
+  const status = $("status");
+  status.classList.remove("sr-only");
+  status.hidden = false;
+  const started = performance.now();
+  const tick = () => {
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
+    $("status-text").textContent = `The agent is working: calling the model and running its tools. ${seconds} s`;
+  };
+  tick();
+  timer = setInterval(tick, 100);
+}
+
+function stopLoading() {
+  isLoading = false;
+  clearInterval(timer);
+  setControlsDisabled(false);
+  $("status").hidden = true;
+}
+
+// aria-disabled (not disabled) so a button keeps keyboard focus while its turn runs.
+function setControlsDisabled(disabled) {
+  buttons.forEach((button) => button.setAttribute("aria-disabled", String(disabled)));
+}
+
+function showError(code, status) {
+  const error = ERRORS[code] ?? ERRORS.unknown;
+  $("error-title").textContent = error.title;
+  $("error-help").textContent = error.help;
+  $("retry-button").hidden = !error.retry || !lastPayload;
+  $("reset-button").hidden = history.length === 0;
+  $("error-code").textContent = status ? `${status} ${code}` : code;
+  $("error").hidden = false;
+}
+
+// Bring a new card into view when it landed below the fold (phones mostly).
+function scrollIntoViewIfBelow(target) {
+  if (target.getBoundingClientRect().top > window.innerHeight * 0.6) {
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" });
+  }
+}
+
+function updateCharCount() {
+  $("char-count").textContent = messageBox.value.length;
+}
+
+// Create an element with a class and plain text. Never parses HTML.
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+updateCharCount();

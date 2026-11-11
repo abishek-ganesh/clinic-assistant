@@ -162,6 +162,27 @@ h1 {
   text-transform: uppercase;
 }
 
+/* Tabs: one link per page, the current one underlined in Columbia blue */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
+  border-top: 1px solid rgb(185 217 235 / 0.25);
+}
+.tab {
+  padding: var(--space-3) 0;
+  border-bottom: 3px solid transparent;
+  color: var(--columbia);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+.tab:hover { color: var(--white); }
+.tab[aria-current="page"] { border-bottom-color: var(--columbia); color: var(--white); }
+
 /* Steps: a numbered rail on the left, one step per pipeline stage, evenly spaced */
 
 main.wrap { padding-top: var(--space-7); padding-bottom: var(--space-5); }

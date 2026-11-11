@@ -24,3 +24,18 @@ MAX_MAX_TOKENS = 4096
 
 # Handbook chunking: target size and hard cap, in approximate tokens.
 CHUNK_MAX_TOKENS = 350
+
+# Booking agent: the most model calls in one turn. A normal turn takes two or three (look up
+# slots, then propose or reply), so hitting this means the model is going in circles.
+AGENT_MAX_MODEL_CALLS = 6
+
+# Booking agent: the most slots one check_availability call returns to the model.
+AVAILABILITY_MAX_SLOTS = 10
+
+# Booking agent: how long a proposal's signed confirmation stays valid, in seconds.
+PROPOSAL_TTL_SECONDS = 600
+
+# Booking page: longest message, most earlier turns sent back, and longest earlier turn.
+MAX_BOOKING_MESSAGE_CHARS = 500
+MAX_BOOKING_HISTORY = 30
+MAX_BOOKING_TURN_CHARS = 2000

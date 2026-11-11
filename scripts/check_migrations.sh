@@ -4,8 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-NAME=clinic-migration-check
-PORT=54329
+# CHECK_NAME and CHECK_PORT let two checks run side by side
+NAME=${CHECK_NAME:-clinic-migration-check}
+PORT=${CHECK_PORT:-54329}
 export PGPASSWORD=test
 docker run -d --rm --name "$NAME" -e POSTGRES_PASSWORD=test -p "$PORT:5432" pgvector/pgvector:pg17 >/dev/null
 trap 'docker stop "$NAME" >/dev/null' EXIT
@@ -19,4 +20,9 @@ for migration in supabase/migrations/*.sql; do
   psql_ -f "$migration"
 done
 psql_ -f supabase/tests/migration_checks.sql
+for checks in supabase/tests/checks_*.sql; do
+  [ -e "$checks" ] || continue
+  echo "running $checks"
+  psql_ -f "$checks"
+done
 echo "migration checks passed"
