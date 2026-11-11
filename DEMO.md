@@ -17,7 +17,7 @@ Close with: *by March, you will have built one of these yourself.*
 
 ## Good follow-ups if someone asks
 - **"What if it gets it wrong?"** Ask "Do you offer dental cleanings?". It sounds like a clinic question, so the scope judgment lets it through, but nothing relevant is retrieved and the similarity floor declines it. Three layers, each catching what the others miss (DECISIONS D28).
-- **"How much does this cost?"** About three hundredths of a cent per answered question. Declines and emergencies cost almost nothing because no answer is generated.
+- **"How much does this cost?"** About two hundredths of a cent per answered question (measured: $0.00016 on average). Declines and emergencies cost almost nothing because no answer is generated.
 - **"Can I use it?"** Yes: the page is open, and every student gets a token for the class endpoint.
 
 ## If something fails live
