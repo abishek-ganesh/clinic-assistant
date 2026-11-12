@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     embedding_model: str = "voyage-4-lite"
     embedding_dimensions: int = 512
 
+    # Email for class token links. EMAIL_FROM is a sender on a domain verified in Resend,
+    # for example "Family Clinic Assistant <tokens@example.com>"
+    resend_api_key: str | None = None
+    email_from: str | None = None
+    # Where emailed links point. Vercel sets the second variable itself in production.
+    public_base_url: str | None = None
+    vercel_project_production_url: str | None = None
+
     # Local fallback when a key is missing (development only)
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
@@ -37,6 +45,15 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def base_url(self) -> str:
+        """The site's own address, from configuration and never from a request's Host header."""
+        if self.public_base_url:
+            return self.public_base_url.rstrip("/")
+        if self.vercel_project_production_url:
+            return f"https://{self.vercel_project_production_url}"
+        return "http://127.0.0.1:8000"
 
     def providers(self) -> dict[str, bool]:
         """Which providers have credentials. Never exposes the values themselves."""

@@ -43,3 +43,8 @@ MAX_BOOKING_TURN_CHARS = 2000
 # Token page: longest email (the limit in the email standard) and longest class code accepted.
 MAX_EMAIL_CHARS = 254
 MAX_CLASS_CODE_CHARS = 100
+
+# Token page: how long an emailed link works, and how many links one address can be sent in
+# an hour. The second number stops the form being used to flood someone's inbox.
+TOKEN_LINK_TTL_SECONDS = 900
+MAX_TOKEN_LINKS_PER_HOUR = 3

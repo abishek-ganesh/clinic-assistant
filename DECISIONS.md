@@ -280,10 +280,15 @@ Three thin slices built on Nov 11, 2026, one per later stage of the course: a bo
 - **Design:** same header, tabs, tokens, spacing scale, `.card` and `.eyebrow` as the Ask page. `stats.css` holds only what this page adds.
 
 ### D64. Students request their own token with a class code
-- **Considered:** the instructor minting one token per student from a roster and sending each by direct message; an open form that gives a token to any email; an allowlist of roster emails; emailing the token to prove the address.
-- **Why:** enrollment changes until the first week, so a roster is always out of date. An open form is an open endpoint. An allowlist is the roster again. Sending email adds a provider and a subprocessor for a problem the class code already solves: the code is shared in the class Slack, so knowing it is the proof of being in the class.
-- **Consequence:** the email is a label, not an identity. Anyone with the code can request a token for any address, and requesting one for a classmate's address turns off that classmate's self-service token. That is mischief, not a breach, and the fix is to request again. Tokens the instructor minted by hand are never replaced by the form.
+- **Considered:** the instructor minting one token per student from a roster and sending each by direct message; an open form that gives a token to any email; an allowlist of roster emails; picking your name from a class list.
+- **Why:** enrollment changes until the first week, so a roster is always out of date. An open form is an open endpoint. An allowlist is the roster again. A name list proves nothing, since anyone can pick any name, and it publishes the class list. The class code is shared in the class Slack, so knowing it shows you are in the class.
 - **Controls:** only the code's hash is stored; wrong guesses count toward the per-visitor limit; the instructor can change the code or close sign-ups in one command; every token keeps its own per-minute and per-day limits and can be revoked.
+
+### D65. The token is reached through an emailed one-time link
+- **Considered:** showing the token on the page as soon as the class code matched (the first version, live for a few hours on Nov 11); emailing the token itself.
+- **Why:** with the code alone, the email was only a label. Anyone in the class could request a token under a classmate's address, which also turned the classmate's token off. A link sent to the inbox proves the address, so the list of who holds which token can be trusted. Emailing the token itself would leave a long-lived secret sitting in an inbox; a link that works once for 15 minutes does not.
+- **Details that matter:** the link's secret rides after the `#`, so it stays out of server logs. Redeeming takes a button press, so a mail scanner that opens links cannot spend it. The link's address comes from configuration, not from the request's `Host` header. A new request does not turn off the current token until its link is redeemed. One address gets at most three links an hour.
+- **Cost:** a second step, a new provider (Resend) that receives student email addresses, and a student whose message lands in spam is stuck until they find it. This is also the first real personal data in an app that otherwise holds only synthetic data, so the page says what the address is used for.
 
 ## What broke and how we fixed it
 

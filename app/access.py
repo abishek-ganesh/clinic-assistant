@@ -10,6 +10,7 @@ from typing import NamedTuple
 from app.config import get_settings
 from app.db import get_db
 from app.models import AccessDecision
+from app.thresholds import MAX_TOKEN_LINKS_PER_HOUR, TOKEN_LINK_TTL_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -132,18 +133,36 @@ async def authorize_demo(ip: str) -> AccessDecision:
     return AccessDecision.model_validate(result.data)
 
 
-async def request_token(email: str, class_code: str) -> tuple[str | None, dict]:
-    """Mint a token for a student who knows the class code. Returns (token, database result).
+async def start_token_request(email: str, class_code: str, ip_hash: str) -> tuple[str | None, dict]:
+    """Step 1 of a token request: check the class code and record a pending request.
 
-    The token is None unless result["issued"] is true; result["reason"] says why not.
+    Returns (link secret, database result). The secret goes in the emailed link and only its
+    hash is stored. It is None unless result["started"] is true.
     """
-    token, token_hash, prefix = mint_token()
+    link_secret = secrets.token_urlsafe(32)
     db = await get_db()
     result = await db.rpc(
-        "request_token",
+        "start_token_request",
         {
             "p_email": email,
             "p_code_hash": hash_class_code(class_code),
+            "p_link_hash": hash_token(link_secret),
+            "p_ttl_seconds": TOKEN_LINK_TTL_SECONDS,
+            "p_max_per_hour": MAX_TOKEN_LINKS_PER_HOUR,
+            "p_ip_hash": ip_hash,
+        },
+    ).execute()
+    return (link_secret if result.data["started"] else None), result.data
+
+
+async def redeem_token_link(link_secret: str) -> tuple[str | None, dict]:
+    """Step 2: trade an emailed link for a token, once. Returns (token, database result)."""
+    token, token_hash, prefix = mint_token()
+    db = await get_db()
+    result = await db.rpc(
+        "redeem_token_request",
+        {
+            "p_link_hash": hash_token(link_secret),
             "p_token_hash": token_hash,
             "p_token_prefix": prefix,
         },

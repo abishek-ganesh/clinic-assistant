@@ -376,27 +376,41 @@ The page (its header reads "Observability") is the course's first look at that t
 
 ## Self-service class tokens
 
-The class endpoint needs a token per student. Students get their own on the `/token` page instead of the instructor handing them out.
+The class endpoint needs a token per student. Students get their own on the `/token` page, in two steps. The class code shows they are in the class. A link sent to their inbox shows they own the address.
 
 ```
-POST /api/token  {"email": "...", "class_code": "..."}
+Step 1   POST /api/token  {"email": "...", "class_code": "..."}
    |-- validate the email shape and the code's length
-   |-- authorize_demo(ip)        the shared per-visitor limit, kill switch, spend cap
-   |-- mint a token in Python, hash the class code
-   |-- request_token() in Postgres:
-   |       no class code set   -> signups_closed (403)
-   |       hash does not match -> wrong_code (403)
-   |       otherwise           -> turn off this email's earlier self-service token,
-   |                              store the new token's hash
-   |-- usage_log row (surface "token", outcome "issued" or "refused")
+   |-- authorize_demo(ip)          the shared per-visitor limit, kill switch, spend cap
+   |-- make a random link secret, hash it, hash the class code
+   |-- start_token_request() in Postgres:
+   |       no class code set          -> signups_closed (403)
+   |       hash does not match        -> wrong_code (403)
+   |       3 links this hour already  -> too_many_links (429)
+   |       otherwise                  -> store a pending request: email, link hash, expiry
+   |-- send the link through Resend:  https://<site>/token#link=<secret>
+   v
+{"sent": true, "email": "...", "expires_minutes": 15}        no token yet
+
+Step 2   the student opens the link and presses "Show my token"
+         POST /api/token/redeem  {"link": "<secret>"}
+   |-- authorize_demo(ip)
+   |-- mint a token in Python
+   |-- redeem_token_request() in Postgres, all or nothing:
+   |       unknown, used or expired link -> link_invalid, link_used, link_expired (410)
+   |       otherwise -> mark the request used, turn off this email's earlier
+   |                    self-service token, store the new token's hash
    v
 {"token": "sk-bootcamp-...", "email": "...", "replaced": false}   shown once, never cached
 ```
 
-- **The class code is the proof, not the email.** No email is sent, so anyone with the code can type any address. The address is a label: it shows who a token belongs to and lets a second request replace the first. The instructor shares the code in the class Slack and can change it or close sign-ups with `scripts/tokens.py class-code`.
-- **Only the code's hash is stored**, in `app_settings.class_code_hash`. The check happens inside Postgres, so the hash never leaves the database.
-- **Guessing is slow.** A wrong code is logged with an outcome that counts toward the visitor's ten requests a minute, and a generated code has about 59 bits of randomness.
-- **Asking again replaces, but only self-service tokens.** A token the instructor minted by hand has `self_service = false` and is never turned off by the form.
+- **Nothing secret is stored.** The database holds a hash of the class code, a hash of each link and a hash of each token. The token never travels by email: the inbox only ever holds a link that works once, for 15 minutes.
+- **The link's secret sits after the `#`.** Browsers do not send that part of an address to a server, so it never appears in request logs, and the page removes it from the address bar on load.
+- **A person has to press the button.** Some mail systems open every link in a message to scan it. Opening the page spends nothing; only the button press redeems the link.
+- **The link's address comes from configuration**, never from the request's `Host` header. Otherwise a forged header could make the app mail someone a link that points at another site.
+- **Asking again is safe.** A new request does not touch the current token. The old token is turned off only when the new link is redeemed, and only if it was a self-service token: one the instructor minted by hand (`self_service = false`) is never replaced by the form.
+- **Guessing and flooding are both capped.** Wrong codes and bad links are logged with an outcome that counts toward the visitor's ten requests a minute, and one address can be sent three links an hour.
+- The instructor changes the class code or closes sign-ups with `scripts/tokens.py class-code`, and sees who holds which token with `scripts/tokens.py list`.
 
 ## What exists today
 
@@ -430,6 +444,7 @@ POST /api/token  {"email": "...", "class_code": "..."}
 | `handbook_chunks` | handbook passages and their 512-dim vectors | `embedding_model` is recorded per row: vectors from two models are not comparable |
 | `student_tokens` | one row per student API token | only the sha256 hash is stored; the token is shown once when minted. `self_service` marks tokens requested on the `/token` page |
 | `usage_log` | one row per request on any surface | `surface` is `endpoint`, `demo`, `booking`, `mcp`, `eval` or `token`. Tokens, latency, status, outcome, ignored params, raw judgments, estimated cost |
+| `token_requests` | one row per emailed token link | the email, a hash of the link, when it expires and when it was used |
 | `app_settings` | key/value switches | `kill_switch`, `spend_cap_usd` (monthly), `demo_rpm_per_ip`, `booking_max_per_ip_per_day` (5), `class_code_hash` (null closes token sign-ups) |
 | `providers` | three fictional providers: Dr. Patel and Dr. Lee (Main Street), Dr. Kim (Riverside) | |
 | `provider_blocks` | the weekly schedule: provider, weekday, visit type, start, end, slot length | blocks never overlap for a provider, so slots cannot overlap |
@@ -444,10 +459,10 @@ What each surface writes to `usage_log`:
 | `demo` | question on the Ask page | `answered`, `declined`, `emergency`, `denied`, `error` |
 | `booking` | agent turn (tokens summed over its model calls) | `replied`, `proposed`, `booked`, `refused`, `step_limit`, `denied`, `error` |
 | `mcp` | tool call (the tool name is in `detail`) | `tool_call`, `denied`, `error` |
-| `token` | token request (the reason is in `detail`) | `issued`, `refused`, `denied`, `error` |
+| `token` | link request or link redeemed (the reason is in `detail`) | `link_sent`, `issued`, `refused`, `denied`, `error` |
 | `eval` | eval question | the pipeline's decision, or `error` |
 
-Eight Postgres functions do the heavy lifting next to the data (the eighth, `request_token`, is described under "Self-service class tokens"):
+Nine Postgres functions do the heavy lifting next to the data (the last two, `start_token_request` and `redeem_token_request`, are described under "Self-service class tokens"):
 
 - **`match_chunks(query_embedding, match_count)`** returns the nearest passages with cosine similarity (1 means same direction, 0 means unrelated). An HNSW index backs it.
 - **`authorize_request(token_hash)`** allows or denies a class-endpoint request in one round trip, cheapest checks first: kill switch, unknown token, revoked token, monthly spend cap, per-minute limit, per-day limit. Days and months follow class time (Eastern).
@@ -487,6 +502,7 @@ All data is synthetic. The clinic is fictional and no real patient information e
 | Anthropic | the question and retrieved handbook passages; class endpoint messages; booking conversations and the tool results in them | answer generation, class completions, the booking agent |
 | TypeSafe | the question text | emergency and scope judgments |
 | Voyage AI | the question text (from the Ask page and from MCP `search_handbook` calls) and handbook passages | embeddings |
+| Resend | the email address of a student requesting a token, and the one-time link | delivering the token link |
 | Supabase | everything stored in the tables above | database |
 | Vercel | request traffic | hosting |
 

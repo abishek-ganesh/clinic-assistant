@@ -41,7 +41,27 @@ code { font-family: var(--font-mono); font-size: 0.9em; }
   gap: var(--space-4);
 }
 .ask-button[aria-disabled="true"] { opacity: 0.6; cursor: progress; }
-.token-form + .error { max-width: 44rem; }
+.token-form ~ .error, .sent { max-width: 44rem; }
+.form-row .ask-help { max-width: 26rem; }
+.form-row .ask-button { flex: none; }
+
+.sent {
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border-left: 6px solid var(--navy);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.sent-text { margin-top: var(--space-2); font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; }
+.sent-help { margin-top: var(--space-2); color: var(--slate); font-size: 0.9rem; }
+
+.reveal {
+  max-width: 44rem;
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: 6px solid var(--accent);
+}
+.reveal p + p { margin-top: var(--space-2); }
+.reveal .ask-button { margin-top: var(--space-4); }
 
 /* Step 3: the token and the sample */
 .token-card {

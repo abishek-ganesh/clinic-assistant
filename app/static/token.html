@@ -61,9 +61,9 @@
     <section class="step" aria-labelledby="title-request">
       <div class="step-title">
         <span class="step-num" aria-hidden="true">2</span>
-        <h2 id="title-request">Request your token</h2>
+        <h2 id="title-request">Request a link</h2>
       </div>
-      <p class="step-note">Enter your email and the class code from the class Slack. No email is sent: your token appears on this page, once.</p>
+      <p class="step-note">Enter your email and the class code from the class Slack. We email you a link that works once. Opening it shows your token on this page.</p>
 
       <form id="token-form" class="token-form card" novalidate>
         <div class="field">
@@ -77,10 +77,16 @@
                  spellcheck="false" maxlength="100" placeholder="from the class Slack" required>
         </div>
         <div class="form-row">
-          <p class="ask-help">Asking again with the same email replaces your earlier token.</p>
-          <button id="submit-button" class="ask-button" type="submit">Get my token</button>
+          <p class="ask-help">Your email is stored with your token, so the instructor can see who holds which one, and is passed to our email provider to deliver the link.</p>
+          <button id="submit-button" class="ask-button" type="submit">Email me a link</button>
         </div>
       </form>
+
+      <div id="sent" class="sent card" role="status" hidden>
+        <p class="eyebrow">Check your inbox</p>
+        <p id="sent-text" class="sent-text"></p>
+        <p class="sent-help">Not there after a minute? Look in spam, then request another link. Asking again does not affect a token you already have until you open the new link.</p>
+      </div>
 
       <div id="error" class="error card" role="alert" hidden>
         <p id="error-title" class="error-title"></p>
@@ -93,7 +99,18 @@
         <span class="step-num" aria-hidden="true">3</span>
         <h2 id="title-token">Your token</h2>
       </div>
-      <p id="token-note" class="step-note">It will appear here with a code sample you can paste into a notebook.</p>
+      <p id="token-note" class="step-note">Open the link from your email and your token appears here, with a code sample you can paste into a notebook.</p>
+
+      <div id="reveal" class="reveal card" hidden>
+        <p class="eyebrow">Your link is ready</p>
+        <p>The token is shown once. Have somewhere to paste it before you continue.</p>
+        <button id="reveal-button" class="ask-button" type="button">Show my token</button>
+      </div>
+
+      <div id="link-error" class="error card" role="alert" hidden>
+        <p id="link-error-title" class="error-title"></p>
+        <p id="link-error-help" class="error-help"></p>
+      </div>
 
       <div id="issued" aria-live="polite" hidden>
         <div class="token-card card">
@@ -116,7 +133,7 @@
   </main>
 
   <footer class="site-footer">
-    <p class="wrap">Tokens are for coursework only and can be turned off at any time. Only a hash of each token is stored, so a lost token cannot be shown again.</p>
+    <p class="wrap">Tokens are for coursework only and can be turned off at any time. Only a hash of each token is stored, so a lost token cannot be shown again. Emails are used only to deliver the link and to label the token.</p>
   </footer>
 </body>
 </html>
