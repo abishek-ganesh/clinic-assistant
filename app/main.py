@@ -82,6 +82,9 @@ def health() -> dict:
         "generation_model": settings.generation_model,
         "embedding_model": settings.embedding_model,
         "embedding_dimensions": settings.embedding_dimensions,
+        # Token links: whether email can be sent, and the address the links will point at
+        "email": bool(settings.resend_api_key and settings.email_from),
+        "base_url": settings.base_url,
     }
 
 
