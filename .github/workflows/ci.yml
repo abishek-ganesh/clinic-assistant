@@ -18,7 +18,7 @@ concurrency:
 jobs:
   test:
     name: Lint and unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: ubuntu-latest moves to 26 mid-course
     timeout-minutes: 10
     steps:
       # Actions are pinned to a commit: a tag can be moved to different code, a commit cannot.
@@ -41,7 +41,7 @@ jobs:
     # Never on pull requests: a fork's pull request must not be able to reach the secrets.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: ubuntu-latest moves to 26 mid-course
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

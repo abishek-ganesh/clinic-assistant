@@ -2,7 +2,8 @@
 
 Same shape as /api/ask in main.py: validate, check access, call one function, log usage.
 The server keeps no conversation: the page sends the earlier turns back each time, and
-nothing in them can cause a booking. Only a confirmation this server signed can.
+nothing in them can cause a booking. Only a Confirm press carrying a confirmation this server
+signed can, and that goes to code, not to the model.
 """
 
 import logging
@@ -71,7 +72,7 @@ def _user_message(body: dict) -> tuple[str, dict | None]:
         confirmation = body.get("confirmation")
         slot_id = confirmation.get("slot_id") if isinstance(confirmation, dict) else None
         try:
-            # Shape only. Whether the signature is good is decided when book_slot runs.
+            # Shape only. Whether the signature is good is decided in agent.confirm_turn.
             parse_slot_id(slot_id)
         except BookingError:
             raise InvalidRequest("That confirmation is not in the expected shape.") from None
@@ -132,7 +133,10 @@ async def api_book(request: Request) -> JSONResponse:
 
     messages = [*history, {"role": "user", "content": message}]
     try:
-        turn = await agent.run_turn(messages, confirmation, ip_hash)
+        if confirmation is None:
+            turn = await agent.run_turn(messages)
+        else:
+            turn = await agent.confirm_turn(messages, confirmation, ip_hash)
     except Exception:
         logger.exception("booking agent failed")
         await log_usage(
@@ -156,7 +160,7 @@ async def api_book(request: Request) -> JSONResponse:
         input_tokens=turn.input_tokens,
         output_tokens=turn.output_tokens,
         latency_ms=latency_ms,
-        detail=turn.booking["confirmation_code"] if turn.booking else None,
+        detail=turn.booking["confirmation_code"] if turn.booking else turn.booking_error,
     )
     return JSONResponse(
         {

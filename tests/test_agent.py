@@ -153,16 +153,15 @@ def test_a_confirmation_signed_with_another_key_is_rejected(fakes, use_settings)
 
 async def test_a_plain_reply_takes_one_model_call(fakes):
     fakes.model(text("Which day works for you?"))
-    turn = await agent.run_turn(ASK, None, "ip")
+    turn = await agent.run_turn(ASK)
     assert (turn.outcome, turn.reply, turn.steps) == ("replied", "Which day works for you?", [])
     assert (turn.model_calls, turn.input_tokens, turn.output_tokens) == (1, 100, 10)
 
     request = fakes.messages.requests[0]
     assert request["model"] == "claude-haiku-5-5"
     assert request["output_config"] == {"effort": "low"}
-    assert [tool["name"] for tool in request["tools"]] == [
-        "check_availability", "propose_slot", "book_slot",
-    ]  # fmt: skip
+    # The model can look and propose. It has no tool that books.
+    assert [tool["name"] for tool in request["tools"]] == ["check_availability", "propose_slot"]
     assert not {"temperature", "top_p", "top_k", "tool_choice"} & request.keys()
     assert "911" in request["system"] and "Family Clinic" in request["system"]
     assert request["messages"][-1]["role"] == "user"  # no prefill
@@ -174,7 +173,7 @@ async def test_a_proposal_ends_the_turn_with_a_signed_confirmation(fakes):
         calls(call("propose_slot", {"slot_id": SLOT.slot_id})),
         text("never reached"),
     )
-    turn = await agent.run_turn(ASK, None, "ip")
+    turn = await agent.run_turn(ASK)
 
     assert turn.outcome == "proposed"
     assert turn.model_calls == 2 and len(fakes.messages.script) == 1
@@ -190,7 +189,7 @@ async def test_a_proposal_ends_the_turn_with_a_signed_confirmation(fakes):
 async def test_thinking_blocks_and_tool_results_go_back_unchanged(fakes):
     first = calls(call("check_availability", {}, "toolu_a"))
     fakes.model(first, text("Tue Dec 1, 9:40 AM is open."))
-    await agent.run_turn(ASK, None, "ip")
+    await agent.run_turn(ASK)
 
     second_request = fakes.messages.requests[1]["messages"]
     assert second_request[0] == ASK[0]
@@ -206,63 +205,67 @@ async def test_thinking_blocks_and_tool_results_go_back_unchanged(fakes):
     assert json.loads(result["content"])["slots"][0]["slot_id"] == SLOT.slot_id
 
 
-async def test_book_slot_without_a_confirmation_books_nothing(fakes):
+async def test_a_model_that_asks_for_book_slot_gets_an_unknown_tool_error(fakes):
     fakes.model(
         calls(call("book_slot", {"slot_id": SLOT.slot_id})),
-        text("I need you to confirm first."),
+        text("Let me propose it instead."),
     )
-    turn = await agent.run_turn(ASK, None, "ip")
-
+    turn = await agent.run_turn(ASK)
     assert fakes.schedule.booked == []
-    assert turn.outcome == "replied" and turn.booking is None
-    assert turn.steps[0]["is_error"] and "propose_slot" in turn.steps[0]["result"]["error"]
+    assert turn.booking is None and turn.steps[0]["is_error"]
     [result] = tool_results(fakes.messages.requests[1])
-    assert result["is_error"] is True
+    assert result["is_error"] is True and "Unknown tool" in result["content"]
+
+
+# Confirm: code books, the model is not called
+
+
+CONFIRMED = [*ASK, {"role": "assistant", "content": "I can book..."},
+             {"role": "user", "content": agent.confirm_message(SLOT.slot_id)}]  # fmt: skip
+
+
+async def test_a_valid_confirmation_books_in_code_without_a_model_call(fakes):
+    fakes.model()  # an empty script: any model call would fail the test
+    turn = await agent.confirm_turn(CONFIRMED, agent.sign_confirmation(SLOT.slot_id), "iphash")
+
+    assert fakes.schedule.booked == [(SLOT.slot_id, "iphash")]
+    assert fakes.messages.requests == [] and turn.model_calls == 0
+    assert turn.outcome == "booked" and turn.booking["confirmation_code"] == "FC-3F9A2C"
+    assert "FC-3F9A2C" in turn.reply and SLOT.display in turn.reply
+    [step] = turn.steps
+    assert (step["tool"], step["by"], step["is_error"]) == ("book_slot", "code", False)
 
 
 @pytest.mark.parametrize("change", ["signature", "expired", "other_slot"])
-async def test_book_slot_with_a_bad_confirmation_books_nothing(fakes, monkeypatch, change):
+async def test_a_bad_confirmation_books_nothing_and_calls_no_model(fakes, monkeypatch, change):
     confirmation = agent.sign_confirmation(SLOT.slot_id)
-    target = SLOT.slot_id
     if change == "signature":
         confirmation["signature"] = "f" * 64
     elif change == "expired":
         now = agent.time.time()
         monkeypatch.setattr(agent.time, "time", lambda: now + PROPOSAL_TTL_SECONDS + 1)
     else:
-        target = OTHER  # a real signature, but the model tries to spend it on another slot
+        confirmation["slot_id"] = OTHER  # a real signature spent on another slot
 
-    fakes.model(calls(call("book_slot", {"slot_id": target})), text("Let me propose again."))
-    turn = await agent.run_turn(ASK, confirmation, "ip")
-    assert fakes.schedule.booked == []
+    fakes.model()
+    turn = await agent.confirm_turn(CONFIRMED, confirmation, "ip")
+    assert fakes.schedule.booked == [] and fakes.messages.requests == []
+    assert (turn.outcome, turn.reply) == ("not_booked", agent.CONFIRMATION_INVALID_MESSAGE)
     assert turn.booking is None and turn.steps[0]["is_error"]
 
 
-async def test_a_confirmed_slot_is_booked_and_the_model_writes_the_confirmation(fakes):
-    confirmation = agent.sign_confirmation(SLOT.slot_id)
-    fakes.model(
-        calls(call("book_slot", {"slot_id": SLOT.slot_id})),
-        text("You're booked. Your confirmation code is FC-3F9A2C."),
-    )
-    messages = [*ASK, {"role": "assistant", "content": "I can book..."},
-                {"role": "user", "content": agent.confirm_message(SLOT.slot_id)}]  # fmt: skip
-    turn = await agent.run_turn(messages, confirmation, "iphash")
-
-    assert fakes.schedule.booked == [(SLOT.slot_id, "iphash")]
-    assert turn.outcome == "booked"
-    assert turn.booking["confirmation_code"] == "FC-3F9A2C"
-    assert "FC-3F9A2C" in turn.reply
-    [result] = tool_results(fakes.messages.requests[1])
-    assert json.loads(result["content"])["confirmation_code"] == "FC-3F9A2C"
-    assert SLOT.slot_id in messages[-1]["content"]
-
-
-async def test_a_slot_taken_in_the_meantime_is_an_error_result_not_a_booking(fakes):
+async def test_a_slot_taken_in_the_meantime_hands_the_model_one_turn_to_offer_others(fakes):
     fakes.schedule.fail_with = "slot_taken"
-    fakes.model(calls(call("book_slot", {"slot_id": SLOT.slot_id})), text("That one just went."))
-    turn = await agent.run_turn(ASK, agent.sign_confirmation(SLOT.slot_id), "ip")
+    fakes.model(text("That one just went. Tue Dec 1 at 10:00 AM is open."))
+    turn = await agent.confirm_turn(CONFIRMED, agent.sign_confirmation(SLOT.slot_id), "ip")
+
     assert turn.outcome == "replied" and turn.booking is None
-    assert "just booked by someone else" in turn.steps[0]["result"]["error"]
+    assert turn.booking_error == "slot_taken"
+    assert turn.steps[0]["by"] == "code" and "someone else" in turn.steps[0]["result"]["error"]
+    # The model sees why, in place of the confirm turn, and still has no booking tool
+    last = fakes.messages.requests[0]["messages"][-1]["content"]
+    assert "could not be booked" in last and "someone else" in last
+    assert len(fakes.messages.requests[0]["messages"]) == len(CONFIRMED)
 
 
 async def test_a_slot_the_model_made_up_cannot_be_proposed(fakes):
@@ -270,7 +273,7 @@ async def test_a_slot_the_model_made_up_cannot_be_proposed(fakes):
         calls(call("propose_slot", {"slot_id": "patel:2026-12-01T03:00"})),
         text("Let me check what is open."),
     )
-    turn = await agent.run_turn(ASK, None, "ip")
+    turn = await agent.run_turn(ASK)
     assert turn.proposal is None and turn.outcome == "replied"
     assert turn.steps[0]["is_error"]
 
@@ -281,7 +284,7 @@ async def test_a_slot_the_model_made_up_cannot_be_proposed(fakes):
 )
 async def test_bad_tool_arguments_come_back_as_errors_without_a_lookup(fakes, tool_input):
     fakes.model(calls(call("check_availability", tool_input)), text("Sorry, one moment."))
-    turn = await agent.run_turn(ASK, None, "ip")
+    turn = await agent.run_turn(ASK)
     assert turn.steps[0]["is_error"] and fakes.schedule.lookups == []
 
 
@@ -290,7 +293,7 @@ async def test_the_limit_is_clamped_and_the_date_parsed(fakes):
         calls(call("check_availability", {"on_or_after": "2026-12-03", "limit": 500})),
         text("Here you go."),
     )
-    await agent.run_turn(ASK, None, "ip")
+    await agent.run_turn(ASK)
     [(visit_type, on_or_after, limit)] = fakes.schedule.lookups
     assert (visit_type, on_or_after.isoformat(), limit) == (None, "2026-12-03", 10)
 
@@ -304,7 +307,7 @@ async def test_parallel_tool_calls_get_one_result_each_in_one_message(fakes):
         ),
         text("Here are both."),
     )
-    turn = await agent.run_turn(ASK, None, "ip")
+    turn = await agent.run_turn(ASK)
     results = tool_results(fakes.messages.requests[1])
     assert [result["tool_use_id"] for result in results] == ["toolu_a", "toolu_b", "toolu_c"]
     assert [result["is_error"] for result in results] == [False, False, True]
@@ -313,7 +316,7 @@ async def test_parallel_tool_calls_get_one_result_each_in_one_message(fakes):
 
 async def test_the_loop_stops_at_the_model_call_cap(fakes):
     fakes.model(*[calls(call("check_availability", {}))] * (AGENT_MAX_MODEL_CALLS + 3))
-    turn = await agent.run_turn(ASK, None, "ip")
+    turn = await agent.run_turn(ASK)
     assert turn.outcome == "step_limit" and turn.reply == agent.STEP_LIMIT_MESSAGE
     assert turn.model_calls == AGENT_MAX_MODEL_CALLS == len(fakes.messages.requests)
     assert turn.input_tokens == 100 * AGENT_MAX_MODEL_CALLS
@@ -321,7 +324,7 @@ async def test_the_loop_stops_at_the_model_call_cap(fakes):
 
 async def test_a_refusal_gets_the_fixed_message(fakes):
     fakes.model(reply(stop_reason="refusal"))
-    turn = await agent.run_turn(ASK, None, "ip")
+    turn = await agent.run_turn(ASK)
     assert (turn.outcome, turn.reply) == ("refused", agent.REFUSAL_MESSAGE)
     assert turn.steps == []
 
@@ -329,11 +332,4 @@ async def test_a_refusal_gets_the_fixed_message(fakes):
 async def test_a_model_failure_before_any_booking_is_raised(fakes):
     fakes.model(RuntimeError("upstream down"))
     with pytest.raises(RuntimeError):
-        await agent.run_turn(ASK, None, "ip")
-
-
-async def test_a_model_failure_after_a_booking_still_reports_the_booking(fakes):
-    fakes.model(calls(call("book_slot", {"slot_id": SLOT.slot_id})), RuntimeError("upstream down"))
-    turn = await agent.run_turn(ASK, agent.sign_confirmation(SLOT.slot_id), "ip")
-    assert turn.outcome == "booked"
-    assert "FC-3F9A2C" in turn.reply and SLOT.display in turn.reply
+        await agent.run_turn(ASK)

@@ -223,7 +223,8 @@ function showResult(data) {
   status.hidden = false;
   $("status-text").textContent = isEmergency ? "" : `${capitalize(data.decision)} in ${seconds} seconds. Results are below the question.`;
 
-  scrollToResults(isEmergency ? $("emergency") : $("step-judgment"));
+  if (isEmergency) scrollToResults($("emergency"));
+  else scrollAnswerIntoView();
 }
 
 function showJudgments(data) {
@@ -371,6 +372,15 @@ function scrollToResults(target) {
   if (target.getBoundingClientRect().top > window.innerHeight * 0.6) {
     target.scrollIntoView({ block: "start", behavior: scrollBehavior() });
   }
+}
+
+// Scroll just far enough that the whole answer card is on screen, keeping the steps above it
+// in view where they fit. On a shared screen the answer is what the room is waiting for.
+function scrollAnswerIntoView() {
+  const answer = $("answer");
+  const box = answer.getBoundingClientRect();
+  if (box.top >= 0 && box.bottom <= window.innerHeight) return;
+  answer.scrollIntoView({ block: box.height > window.innerHeight ? "start" : "nearest", behavior: scrollBehavior() });
 }
 
 function scrollBehavior() {

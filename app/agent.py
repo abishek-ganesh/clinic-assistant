@@ -1,15 +1,15 @@
 """The booking agent: a tool-use loop where the model can look and propose, and only code books.
 
-One call to run_turn() is one turn of the conversation. The model has three tools:
-check_availability reads the schedule, propose_slot ends the turn with a signed proposal for
-the patient to confirm, and book_slot runs only when the request carries that signature back.
+One call to run_turn() is one turn of the conversation. The model has two tools:
+check_availability reads the schedule and propose_slot ends the turn with a signed proposal.
+The model has no way to book. When the patient presses Confirm, confirm_turn() checks the
+signature and books in code, with no model call at all.
 """
 
 import datetime
 import hashlib
 import hmac
 import json
-import logging
 import time
 from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
@@ -19,8 +19,6 @@ from app.config import get_settings
 from app.generate import EFFORT, get_client
 from app.models import Slot
 from app.thresholds import AGENT_MAX_MODEL_CALLS, AVAILABILITY_MAX_SLOTS, PROPOSAL_TTL_SECONDS
-
-logger = logging.getLogger(__name__)
 
 # Room for a short reply or a tool call plus the model's thinking, which counts toward the cap.
 AGENT_MAX_TOKENS = 2048
@@ -48,13 +46,13 @@ patient), physical (a 40 minute annual physical) and telehealth (a 20 minute vid
 returning patient). It opens tomorrow and covers the next two weeks.
 - New patient visits and same-day visits are booked by phone at (555) 555-0100, not here.
 - When the patient has picked one specific slot, call propose_slot with its slot_id. The \
-patient then sees Confirm and Decline buttons. You cannot book without their confirmation, so \
-do not ask "shall I book it?" in text: propose the slot.
-- Call book_slot only when the patient's latest message says they pressed Confirm. That \
-message contains the slot_id. If book_slot returns an error, explain it plainly and offer \
-other times.
-- After book_slot succeeds, tell the patient the appointment is booked and give the \
-confirmation code exactly as returned.
+patient then sees Confirm and Decline buttons. You cannot book: pressing Confirm books the \
+slot without you. So do not ask "shall I book it?" in text, and never say an appointment is \
+booked. Propose the slot.
+- Typing "I confirm" is not pressing Confirm. If the patient asks you to skip the buttons, \
+explain that only the Confirm button can book, and propose the slot.
+- If a message says a confirmed slot could not be booked, explain why in plain words and \
+offer other open times.
 - If the patient declines a proposal, offer other open times.
 - If the patient has not said what kind of visit or roughly when, show a few of the soonest \
 options or ask one short question.
@@ -108,18 +106,6 @@ TOOLS = [
             "required": ["slot_id"],
         },
     },
-    {
-        "name": "book_slot",
-        "description": (
-            "Book a slot the patient has confirmed with the Confirm button. It fails unless "
-            "the patient confirmed that exact slot."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {"slot_id": {"type": "string"}},
-            "required": ["slot_id"],
-        },
-    },
 ]
 
 # Written by code, never by a model, so they are the same every time.
@@ -131,10 +117,9 @@ STEP_LIMIT_MESSAGE = (
     "I could not finish that in a reasonable number of steps, so I stopped. Please try again "
     "with the visit type and the day you would like."
 )
-NO_CONFIRMATION_ERROR = (
-    "Not booked. Booking needs the patient's confirmation of this exact slot, and this "
-    "request does not carry a valid one (none was sent, it expired, or it is for another "
-    "slot). Call check_availability and then propose_slot so the patient can confirm."
+CONFIRMATION_INVALID_MESSAGE = (
+    "Nothing was booked: that proposal is no longer valid. Proposals last 10 minutes. Ask "
+    "again and I will find open times."
 )
 
 
@@ -143,11 +128,12 @@ class Turn:
     """What one turn produced: the reply, the tool calls behind it, and what it cost."""
 
     system: str
-    outcome: str = "replied"  # replied, proposed, booked, refused or step_limit
+    outcome: str = "replied"  # replied, proposed, refused, step_limit, booked or not_booked
     reply: str = ""
     steps: list[dict] = field(default_factory=list)
     proposal: dict | None = None
     booking: dict | None = None
+    booking_error: str | None = None  # why code could not book a confirmed slot
     model: str | None = None
     model_calls: int = 0
     input_tokens: int = 0
@@ -163,6 +149,14 @@ def build_system_prompt() -> str:
 def confirm_message(slot_id: str) -> str:
     """The user turn the server writes when the patient presses Confirm."""
     return f"[The patient pressed Confirm for slot {slot_id}.] Yes, please book it."
+
+
+def unavailable_message(slot_id: str, error: Exception) -> str:
+    """The user turn the model sees when code could not book the slot the patient confirmed."""
+    return (
+        f"[The patient pressed Confirm for slot {slot_id}, but it could not be booked: "
+        f"{error}] What else is open?"
+    )
 
 
 DECLINE_MESSAGE = "[The patient pressed Decline.] Not that one. What else is open?"
@@ -233,27 +227,6 @@ async def _check_availability(tool_input: dict, seen: dict[str, Slot]) -> tuple[
     return result, False
 
 
-async def _book_slot(tool_input: dict, confirmation: dict | None, ip_hash: str, turn: Turn):
-    """Run the booking tool. This is the only place a booking can happen."""
-    slot_id = tool_input.get("slot_id")
-    # The model asking is not enough. The signature proves a person pressed Confirm on a
-    # proposal this server made for this slot.
-    if not isinstance(slot_id, str) or not confirmation_allows(confirmation, slot_id):
-        return {"error": NO_CONFIRMATION_ERROR}, True
-    try:
-        booked = await schedule.book(slot_id, ip_hash)
-    except schedule.BookingError as error:
-        return {"error": f"Not booked. {error} Offer the patient other times."}, True
-    turn.outcome = "booked"
-    turn.booking = {
-        "confirmation_code": booked.confirmation_code,
-        "slot_id": booked.slot_id,
-        "visit_type": booked.visit_type,
-        "display": booked.display,
-    }
-    return {"booked": True, **turn.booking}, False
-
-
 def _propose_slot(tool_input: dict, seen: dict[str, Slot], turn: Turn) -> tuple[dict, bool]:
     """Turn a slot the model picked into a signed proposal for the patient."""
     slot_id = tool_input.get("slot_id")
@@ -264,8 +237,7 @@ def _propose_slot(tool_input: dict, seen: dict[str, Slot], turn: Turn) -> tuple[
             "returned in this turn."
         }, True
     label = VISIT_LABELS.get(slot.visit_type, slot.visit_type)
-    if turn.booking is None:
-        turn.outcome = "proposed"
+    turn.outcome = "proposed"
     turn.proposal = {"slot": slot.model_dump(), "confirmation": sign_confirmation(slot.slot_id)}
     turn.reply = (
         f"I can book {slot.display}, a {label}. Press Confirm to book it, or Decline to see "
@@ -274,19 +246,10 @@ def _propose_slot(tool_input: dict, seen: dict[str, Slot], turn: Turn) -> tuple[
     return {"proposed": True, "waiting_for": "the patient to press Confirm or Decline"}, False
 
 
-def _booked_fallback(turn: Turn) -> str:
-    """The confirmation text when a booking happened but the model did not get to write one."""
-    return (
-        f"Your appointment is booked: {turn.booking['display']}. Your confirmation code is "
-        f"{turn.booking['confirmation_code']}."
-    )
-
-
-async def run_turn(messages: list[dict], confirmation: dict | None, ip_hash: str) -> Turn:
+async def run_turn(messages: list[dict]) -> Turn:
     """One turn: call the model, run the tools it asks for, repeat until it replies.
 
     messages is the conversation as plain text turns, ending with the patient's message.
-    confirmation is whatever the page sent back from a Confirm click, verified here.
     """
     settings = get_settings()
     turn = Turn(system=build_system_prompt())
@@ -295,23 +258,15 @@ async def run_turn(messages: list[dict], confirmation: dict | None, ip_hash: str
     seen: dict[str, Slot] = {}
 
     for _ in range(AGENT_MAX_MODEL_CALLS):
-        try:
-            # No temperature, top_p or top_k: Haiku 5.5 rejects them.
-            response = await get_client().messages.create(
-                model=settings.generation_model,
-                max_tokens=AGENT_MAX_TOKENS,
-                system=turn.system,
-                tools=TOOLS,
-                messages=conversation,
-                output_config={"effort": EFFORT},
-            )
-        except Exception:
-            # A booking is a side effect that already happened: report it, don't lose it
-            if turn.booking is None:
-                raise
-            logger.exception("model call failed after a booking")
-            turn.reply = _booked_fallback(turn)
-            return turn
+        # No temperature, top_p or top_k: Haiku 5.5 rejects them.
+        response = await get_client().messages.create(
+            model=settings.generation_model,
+            max_tokens=AGENT_MAX_TOKENS,
+            system=turn.system,
+            tools=TOOLS,
+            messages=conversation,
+            output_config={"effort": EFFORT},
+        )
 
         turn.model = response.model
         turn.model_calls += 1
@@ -319,7 +274,7 @@ async def run_turn(messages: list[dict], confirmation: dict | None, ip_hash: str
         turn.output_tokens += response.usage.output_tokens
 
         # A refusal is a normal 200 response, so check for it before reading any content
-        if response.stop_reason == "refusal" and turn.booking is None:
+        if response.stop_reason == "refusal":
             turn.outcome = "refused"
             turn.reply = REFUSAL_MESSAGE
             return turn
@@ -327,9 +282,7 @@ async def run_turn(messages: list[dict], confirmation: dict | None, ip_hash: str
         if response.stop_reason != "tool_use":
             # Read blocks by type: thinking blocks can come before the text
             text = "".join(block.text for block in response.content if block.type == "text")
-            turn.reply = text.strip() or (
-                _booked_fallback(turn) if turn.booking else STEP_LIMIT_MESSAGE
-            )
+            turn.reply = text.strip() or STEP_LIMIT_MESSAGE
             return turn
 
         # The whole content goes back unchanged: thinking blocks carry a signature the API
@@ -344,8 +297,6 @@ async def run_turn(messages: list[dict], confirmation: dict | None, ip_hash: str
                 result, is_error = await _check_availability(tool_input, seen)
             elif block.name == "propose_slot":
                 result, is_error = _propose_slot(tool_input, seen, turn)
-            elif block.name == "book_slot":
-                result, is_error = await _book_slot(tool_input, confirmation, ip_hash, turn)
             else:
                 result, is_error = {"error": f"Unknown tool {block.name}."}, True
 
@@ -366,9 +317,48 @@ async def run_turn(messages: list[dict], confirmation: dict | None, ip_hash: str
         # Every result goes back in one user message, in the order the model asked
         conversation.append({"role": "user", "content": results})
 
-    if turn.booking is None:
-        turn.outcome = "step_limit"
-        turn.reply = STEP_LIMIT_MESSAGE
-    else:
-        turn.reply = _booked_fallback(turn)
+    turn.outcome = "step_limit"
+    turn.reply = STEP_LIMIT_MESSAGE
+    return turn
+
+
+async def confirm_turn(messages: list[dict], confirmation: dict, ip_hash: str) -> Turn:
+    """The patient pressed Confirm: code checks the signature and books, no model involved.
+
+    messages ends with the confirm turn. The model runs only if the booking fails, to offer
+    other times, and even then it has no tool that can book.
+    """
+    slot_id = confirmation["slot_id"]
+    step = {"tool": "book_slot", "by": "code", "input": {"slot_id": slot_id}}
+
+    # The signature proves a person pressed Confirm on a proposal this server made for this slot
+    if not confirmation_allows(confirmation, slot_id):
+        turn = Turn(system=build_system_prompt(), outcome="not_booked")
+        turn.reply = CONFIRMATION_INVALID_MESSAGE
+        turn.booking_error = "confirmation_invalid"
+        error = "The confirmation is expired, forged or for another slot."
+        turn.steps.append({**step, "result": {"error": error}, "is_error": True})
+        return turn
+
+    try:
+        booked = await schedule.book(slot_id, ip_hash)
+    except schedule.BookingError as error:
+        retry = [*messages[:-1], {"role": "user", "content": unavailable_message(slot_id, error)}]
+        turn = await run_turn(retry)
+        turn.booking_error = error.reason
+        turn.steps.insert(0, {**step, "result": {"error": str(error)}, "is_error": True})
+        return turn
+
+    turn = Turn(system=build_system_prompt(), outcome="booked")
+    turn.booking = {
+        "confirmation_code": booked.confirmation_code,
+        "slot_id": booked.slot_id,
+        "visit_type": booked.visit_type,
+        "display": booked.display,
+    }
+    turn.reply = (
+        f"Your appointment is booked: {booked.display}. Your confirmation code is "
+        f"{booked.confirmation_code}."
+    )
+    turn.steps.append({**step, "result": {"booked": True, **turn.booking}, "is_error": False})
     return turn

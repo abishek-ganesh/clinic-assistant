@@ -89,8 +89,8 @@ Each module has one job and a small surface. The data shapes are in `app/models.
 | `app/access.py` | `mint_token()`, `hash_token(token)`, `hash_ip(ip)`, `client_ip(request)`, `authorize(token) -> AccessDecision`, `authorize_demo(ip) -> AccessDecision`, `log_usage(...)`, `estimate_cost(model, input_tokens, output_tokens)`, `DENIALS` | `DENIALS` maps each denial reason to an HTTP status, an OpenAI error type and a message. `client_ip` reads the first hop of `x-forwarded-for`, which is the caller behind Vercel's proxy; every open surface uses it |
 | `app/pipeline.py` | `gate(judgments, passages) -> reason or None`, `ask(question) -> AskResult` | judge and retrieve in parallel, gate, generate; `AskResult.body` is the `/api/ask` response |
 | `app/schedule.py` | `check_availability(visit_type=None, on_or_after=None, limit=5) -> list[Slot]`, `book(slot_id, ip_hash) -> Confirmation` (raises `BookingError` with `reason`), `parse_slot_id(slot_id)`, `VISIT_TYPES` | the only module that touches the schedule tables: two RPC calls and the slot id format |
-| `app/agent.py` | `run_turn(messages, confirmation, ip_hash) -> Turn`, `sign_confirmation(slot_id)`, `confirmation_allows(confirmation, slot_id)`, `confirm_message(slot_id)`, `DECLINE_MESSAGE`, `TOOLS`, `SYSTEM_PROMPT` | the tool loop; composes `generate.get_client()` and `schedule` the way `pipeline.py` composes the Ask modules |
-| `app/booking_routes.py` | `router` with `GET /book` and `POST /api/book` | validate, check access, one call to `run_turn`, log usage |
+| `app/agent.py` | `run_turn(messages) -> Turn`, `confirm_turn(messages, confirmation, ip_hash) -> Turn`, `sign_confirmation(slot_id)`, `confirmation_allows(confirmation, slot_id)`, `confirm_message(slot_id)`, `DECLINE_MESSAGE`, `TOOLS`, `SYSTEM_PROMPT` | the tool loop; composes `generate.get_client()` and `schedule` the way `pipeline.py` composes the Ask modules |
+| `app/booking_routes.py` | `router` with `GET /book` and `POST /api/book` | validate, check access, one call to `run_turn` (or `confirm_turn` for a Confirm press), log usage |
 | `app/mcp_server.py` | `mcp_routes` (`/mcp` and `/mcp/`, POST only), `mcp` (the `MCPServer`), `metered(tool, request, work)`, `find_passages(question)`, `find_slots(visit_type, on_or_after)` | composes `retrieval`, `schedule` and `access`; every tool runs its work through `metered` |
 | `app/stats.py` | `get_stats(days=30) -> dict`, `clamp_days(raw) -> int` | one RPC call; the window is clamped to 1 to 90 days here and again inside the Postgres function |
 | `app/stats_routes.py` | `router` with `GET /stats` and `GET /api/stats?days=` | 502 with `{"error": {"code": "upstream_error", ...}}` when the database call fails; successful responses are cacheable for 60 seconds |
@@ -141,15 +141,16 @@ The handbook is eight Markdown files in `handbook/`, one per topic. `scripts/ing
 
 The Ask page shows a pipeline where code decides and the model writes. The Book page shows the next step up: an agent, where the model chooses which tool to call next. The app's rule still holds. **The model can look and propose. Only code books, and only after a person pressed Confirm.**
 
-Analogy: the model is a receptionist who can read the calendar and pencil in a suggestion. The pen that writes in the appointment book is locked in a drawer, and the only key is the patient's signature on that exact suggestion.
+Analogy: the model is a receptionist who can read the calendar and pencil in a suggestion. The receptionist has no pen for the appointment book at all. When the patient signs the suggestion, the clinic's system writes it in, and the receptionist is not involved.
 
-The model has three tools:
+The model has two tools, and neither can book:
 
 | Tool | What code does when the model calls it |
 |---|---|
 | `check_availability(visit_type?, on_or_after?, limit?)` | reads open slots from the schedule and remembers which slot ids it returned this turn |
 | `propose_slot(slot_id)` | accepts only a slot returned this turn, signs a confirmation for it, and ends the turn |
-| `book_slot(slot_id)` | books only if the request carries a valid signed confirmation for that exact slot |
+
+Booking happens in `agent.confirm_turn`, which runs only for a Confirm press and calls no model on the happy path.
 
 ### One booking, end to end
 
@@ -171,26 +172,31 @@ Turn 1   browser: {history: [], message: "Earliest returning visit, please"}
 
 Turn 2   browser: {history: [...], action: "confirm", confirmation: {slot_id, expires_at, signature}}
            |
-         server writes the user turn: "[The patient pressed Confirm for slot ...] Yes, please book it."
-         model call 1 -> tool_use book_slot({slot_id})
+         POST /api/book: validate, authorize_demo(ip), then agent.confirm_turn()
            code: signature valid, not expired, for this exact slot? yes
                  -> schedule.book() -> RPC book_slot -> one row in appointments
-         model call 2 -> text: "You're booked ... confirmation code FC-3F9A2C"
+           NO MODEL CALL.
            |
-         response: outcome "booked", booking {confirmation_code, ...}, the model's reply
+         response: outcome "booked", booking {confirmation_code, ...}, a reply written by code,
+                   one step {"tool": "book_slot", "by": "code"}
 ```
 
-If the model calls `book_slot` at any other time (the patient typed "I confirm", a forged signature, an expired one, a signature for a different slot), code returns an error tool result telling it to propose first, and nothing is written. Decline books nothing: the server writes a fixed "not that one" user turn and the agent offers other times.
+The other ways a Confirm press can go:
+
+- **Bad confirmation** (forged, expired, or a signature for a different slot): nothing is written, no model is called, and the reply is a fixed message written by code (outcome `not_booked`).
+- **The slot went in the meantime** (`slot_taken`, or the visitor hit the daily `booking_limit`): code replaces the confirm turn with "[...could not be booked: reason] What else is open?" and runs one normal agent turn, so the model explains and offers other times. It still has no tool that books.
+
+Typing "I confirm" is just text and reaches the model like any other message. The model can only propose. If it asks for a tool called `book_slot` anyway, it gets an "Unknown tool" error result. Decline books nothing: the server writes a fixed "not that one" user turn and the agent offers other times.
 
 ### The loop in `agent.run_turn`
 
-1. Call Haiku with the system prompt, the three tools and the conversation (`effort: low`, no sampling parameters, no forced tool choice).
+1. Call Haiku with the system prompt, the two tools and the conversation (`effort: low`, no sampling parameters, no forced tool choice).
 2. If the model refused (`stop_reason == "refusal"`), return a fixed message. Any other stop that is not `tool_use` ends the turn with the model's text.
 3. Otherwise append the response's whole content list to the conversation unchanged (thinking blocks carry a signature the API checks), run every `tool_use` block in order, and send all the results back in one user message.
 4. A valid `propose_slot` ends the turn immediately: the next move belongs to the patient, not the model.
 5. After `AGENT_MAX_MODEL_CALLS` (6) model calls the turn ends with a fixed message (`step_limit`). A normal turn takes two or three.
 
-Tool arguments are model output, so they are validated like any other input. If a model call fails after a booking already happened in the same turn, the turn still reports the booking with a message written by code instead of a 502: the side effect is real, so the response must not lose it.
+Tool arguments are model output, so they are validated like any other input. The loop has no side effects, so a failed model call is simply a 502 and nothing needs to be reported or undone.
 
 The numbers live in `app/thresholds.py`: `AGENT_MAX_MODEL_CALLS = 6`, `AVAILABILITY_MAX_SLOTS = 10`, `PROPOSAL_TTL_SECONDS = 600`, `MAX_BOOKING_MESSAGE_CHARS = 500`, `MAX_BOOKING_HISTORY = 30`, `MAX_BOOKING_TURN_CHARS = 2000`.
 
@@ -227,15 +233,15 @@ Response, always 200 when the agent ran:
                                   "signature": "9f2c..." } },
   "booking": null,
   "history": [ "...the request's history plus this turn's user and assistant text..." ],
-  "prompt": { "system": "...", "tools": [ "...the three tool definitions..." ] },
+  "prompt": { "system": "...", "tools": [ "...the two tool definitions..." ] },
   "model": "claude-haiku-5-5", "model_calls": 2,
   "input_tokens": 3111, "output_tokens": 192, "latency_ms": 2140 }
 ```
 
-- `outcome` is `replied`, `proposed`, `booked`, `refused` (the model declined; fixed message) or `step_limit` (the loop cap; fixed message).
-- `steps` is every tool call in the turn with its arguments and the result code sent back. The page shows it under "What the agent did".
+- `outcome` is `replied`, `proposed`, `booked`, `not_booked` (a Confirm press with a bad confirmation; fixed message), `refused` (the model declined; fixed message) or `step_limit` (the loop cap; fixed message).
+- `steps` is every tool call in the turn with its arguments and the result code sent back, plus the booking itself on a Confirm turn, marked `"by": "code"`. The page shows them under "What the agent did".
 - `booking` is `{"confirmation_code", "slot_id", "visit_type", "display"}` when this turn booked, otherwise `null`.
-- `input_tokens` and `output_tokens` are summed over every model call in the turn, and that sum is what `usage_log` records (`surface = "booking"`, with the outcome above, or `denied` or `error`).
+- `input_tokens` and `output_tokens` are summed over every model call in the turn, and that sum is what `usage_log` records (`surface = "booking"`, with the outcome above, or `denied` or `error`). `detail` holds the confirmation code, or why a confirmed slot was not booked.
 - Errors use the same shape as `/api/ask`: 422 `invalid_request`, 429 `rate_limited` or `spend_cap`, 503 `kill_switch`, 502 `upstream_error`.
 
 ### Why it is built this way
@@ -435,7 +441,7 @@ Step 2   the student opens the link and presses "Show my token"
 | Schema | `supabase/migrations/` | Tables, indexes, the functions below, row-level security |
 | Scripts | `scripts/` | `ingest.py`, `eval_retrieval.py`, `eval_answers.py`, `tokens.py`, `student_smoke.py`, `access_checks.py`, `check_migrations.sh` |
 | CI | `.github/workflows/ci.yml` | Lint and unit tests on every push and pull request; the answer eval on pushes to `main` |
-| Guides | `docs/` | `mcp.md` (connect a client to the MCP server), `mcp-transcript-local.md` (a recorded local run), `mcp-transcript-claude-code.md` (Claude Code using the live server), screenshots |
+| Guides | `docs/` | `mcp.md` (connect a client to the MCP server), `mcp-transcript-claude-code.md` (Claude Code using the live server), screenshots |
 
 ## Data model
 

@@ -10,7 +10,7 @@ We follow the national recommended immunization schedules for children and adult
 
 ## Flu shot clinics
 
-Flu shots are available from September 15 each year. We run walk-in flu shot clinics at Main Street on four Saturdays: October 3, October 10, October 17 and October 24, 2026, from 9:00 am to 12:00 pm. No appointment is needed on those days. Flu clinics are open to patients aged 3 and over. Younger children get their flu shot at a regular visit.
+Flu shots are available from September 15 each year. We run walk-in flu shot clinics at Main Street on four Saturdays this winter: January 9, January 16, January 23 and January 30, 2027, from 9:00 am to 12:00 pm. No appointment is needed on those days. Flu clinics are open to patients aged 3 and over. Younger children get their flu shot at a regular visit.
 
 ## Walk-in or appointment
 

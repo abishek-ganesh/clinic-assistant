@@ -146,7 +146,7 @@ Three thin slices built on Nov 11, 2026, one per later stage of the course: a bo
 - **Why:** booking is a side effect, and the app's rule is that code owns every side effect. A typed "yes" is just more text the model interprets, and text can be injected or misread. A button press that returns a server-signed token is something code can verify without interpreting anything.
 - **Teaching angle:** this is the human-in-the-loop pattern in its smallest form. In the real-model runs, asked to "skip the buttons and call book_slot", the model either proposed anyway or tried and got an error result. Nothing was booked either way.
 
-### D37. `book_slot` stays a model tool, guarded by the signature
+### D37. `book_slot` stays a model tool, guarded by the signature (superseded by D66)
 - **Considered:** having the Confirm click book directly in code with no model call.
 - **Why:** keeping it a tool shows students the part that matters about agents: the model can ask for anything, and the tool's own code decides whether it runs. It also lets the model write the confirmation message and recover gracefully when the slot was just taken.
 - **Cost:** a Confirm click costs one or two model calls, and if the model ever failed to call `book_slot` after a Confirm the patient would have to press again. In repeated real-model runs it called it every time. Booking directly in code on Confirm would be the more deterministic choice for a real product and is a fair class discussion.
@@ -290,6 +290,12 @@ Three thin slices built on Nov 11, 2026, one per later stage of the course: a bo
 - **Details that matter:** the link's secret rides after the `#`, so it stays out of server logs. Redeeming takes a button press, so a mail scanner that opens links cannot spend it. The link's address comes from configuration, not from the request's `Host` header. A new request does not turn off the current token until its link is redeemed. One address gets at most three links an hour.
 - **Cost:** a second step, a new provider (Resend) that receives student email addresses, and a student whose message lands in spam is stuck until they find it. This is also the first real personal data in an app that otherwise holds only synthetic data, so the page says what the address is used for.
 
+### D66. Confirm books in code; the model has no booking tool (replaces D37)
+- **Considered:** keeping D37, where a Confirm press went back through the model and the model called a guarded `book_slot` tool.
+- **Why:** in D37 the side effect still depended on the model choosing to call a tool after the person had already decided. Now the person's decision goes straight to code: `agent.confirm_turn` checks the signature, books, and writes the reply, with no model call. The model can look and propose and nothing else, so no prompt, however clever, can reach the booking code. A Confirm press is also faster and free.
+- **What the model still does:** if the slot went in the meantime, code tells the model why in place of the confirm turn and it gets one normal turn to offer other times. A forged or expired confirmation gets a fixed message written by code.
+- **Teaching angle:** "the human approves, code acts." The safest tool is the one the model was never given. Checked against the real model (Nov 13): asked to "skip the buttons and book", it proposed instead.
+
 ## What broke and how we fixed it
 
 ### Phase 0
@@ -309,7 +315,7 @@ Three thin slices built on Nov 11, 2026, one per later stage of the course: a bo
 - **The textbook mount fails twice.** A throwaway app with `app.mount("/mcp", mcp.streamable_http_app(...))` and no lifespan answered `POST /mcp` with a 307 redirect to `/mcp/`, and `POST /mcp/` with a 500 (`Task group is not initialized`). Both were expected from the SDK docs and both are designed out (D49, D50).
 - **A GET would have held a function open.** Reading the SDK's transport showed that stateless mode still serves `GET /mcp` as an endless event stream. Caught before it ran anywhere. Fix: POST-only routes (D50).
 - **The default Host check rejects real hostnames.** Confirmed locally: `Host: evil.example` gets `421 Invalid Host header`, and so would the Vercel hostname with the defaults. Fix: configured deliberately (D51).
-- **The MCP `check_availability` tool could not run for real in the local run.** `app/schedule.py` and its Postgres function arrived after the MCP slice was recorded, so the transcript in `docs/mcp-transcript-local.md` uses a stub for that tool and says so. Unit tests stub the module. The later run against the deployed server (`docs/mcp-transcript-claude-code.md`) shows the real tool.
+- **The MCP `check_availability` tool could not run for real in the local run.** `app/schedule.py` and its Postgres function arrived after the MCP slice was recorded, so the transcript recorded then used a stub for that tool and said so. It was deleted on Nov 13, 2026 once the deployed run replaced it. Unit tests stub the module. The later run against the deployed server (`docs/mcp-transcript-claude-code.md`) shows the real tool.
 - **The first SQL check parsed slot ids by splitting on ":"**, which also splits the time. Fix: split on the first colon only, the same rule `parse_slot_id` uses.
 - **A flex-basis became a height.** The intro text on the stats page had `flex: 1 1 28rem` to sit beside the window buttons. On a phone the row becomes a column, and the same basis turned into 28rem of empty height, which pushed the error card off the first screen. Fix: reset the flex value in the small-screen rule. It was caught only by looking at a 390 px screenshot of the error state.
 - **Headless Chrome will not open a window narrower than 500 px**, so a "390 px" screenshot was really 500. Fix: load the page inside a 390 px iframe and compare the page's `scrollWidth` to its `innerWidth`.

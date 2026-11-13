@@ -122,7 +122,7 @@
             <button id="confirm-button" class="ask-button" type="button">Confirm</button>
             <button id="decline-button" class="outline-button" type="button">Decline</button>
           </div>
-          <p class="proposal-why">Code, not the model, performs the booking. Confirm sends back a signature that only the server can produce, for this slot only, valid for 10 minutes. Without it the booking tool refuses to run.</p>
+          <p class="proposal-why">Confirm sends back a signature that only the server can produce, for this slot only, valid for 10 minutes. Code checks it and books without calling the model, which has no booking tool at all.</p>
           <details class="prompt">
             <summary>
               <span class="when-closed">Show the signed confirmation</span>

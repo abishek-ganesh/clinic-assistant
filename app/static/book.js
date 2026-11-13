@@ -54,8 +54,10 @@ const VISIT_LABELS = {
   telehealth: "Telehealth video visit, 20 minutes",
 };
 
-// Who wrote the reply, by outcome. A proposal and the fixed messages are written by code.
-const CODE_WRITTEN = { proposed: "Written by code", refused: "Written by code", step_limit: "Written by code" };
+// Who wrote the reply, by outcome. A proposal, a booking and the fixed messages are written by code.
+const CODE_WRITTEN = Object.fromEntries(
+  ["proposed", "booked", "not_booked", "refused", "step_limit"].map((outcome) => [outcome, "Written by code"]),
+);
 
 const NOTES = {
   confirmIdle: "The model cannot book. When it has a slot for you it can only propose it, and the proposal waits here for you to confirm or decline.",
@@ -175,8 +177,9 @@ function showTurn(data) {
   $("prompt-tools").textContent = JSON.stringify(data.prompt.tools, null, 2);
 
   const calls = data.model_calls === 1 ? "1 model call" : `${data.model_calls} model calls`;
-  $("meta").textContent =
-    `${data.model} · ${calls} · ${data.input_tokens} in + ${data.output_tokens} out tokens · ${data.latency_ms} ms`;
+  $("meta").textContent = data.model_calls
+    ? `${data.model} · ${calls} · ${data.input_tokens} in + ${data.output_tokens} out tokens · ${data.latency_ms} ms`
+    : `No model call · code only · ${data.latency_ms} ms`;
   $("start-over").hidden = false;
 
   // Tell screen readers what happened. The reply itself is announced by the chat log.
@@ -211,7 +214,12 @@ function addTraceTurn(data) {
 
   const turn = el("li", "trace-turn");
   const seconds = (data.latency_ms / 1000).toFixed(1);
-  turn.append(el("p", "eyebrow", `Turn ${turnCount} · ${data.steps.length} tool ${data.steps.length === 1 ? "call" : "calls"} · ${seconds} s`));
+  // A booking step is code acting on the Confirm press, not a tool the model called
+  const toolCalls = data.steps.filter((step) => step.by !== "code").length;
+  const calls = `${toolCalls} tool ${toolCalls === 1 ? "call" : "calls"}`;
+  const byCode = toolCalls < data.steps.length ? " · booked by code" : "";
+  const summary = data.model_calls === 0 ? "No model call" : calls;
+  turn.append(el("p", "eyebrow", `Turn ${turnCount} · ${summary}${byCode} · ${seconds} s`));
   if (data.steps.length === 0) {
     turn.append(el("p", "trace-none", "No tool calls. The model replied from the conversation alone."));
   }
@@ -245,9 +253,9 @@ function toolCall(step) {
 }
 
 function describeStep(step) {
-  if (step.is_error) return ["refused", step.tool === "book_slot" ? "Refused by code" : "Rejected by code"];
+  if (step.by === "code") return step.is_error ? ["refused", "Code could not book"] : ["ran", "Booked by code, no model"];
+  if (step.is_error) return ["refused", "Rejected by code"];
   if (step.tool === "propose_slot") return ["proposed", "Ended the turn"];
-  if (step.tool === "book_slot") return ["ran", "Booked by code"];
   return ["ran", "Ran"];
 }
 

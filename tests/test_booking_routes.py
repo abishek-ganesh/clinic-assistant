@@ -26,6 +26,7 @@ def wired(monkeypatch, use_settings):
         "decision": AccessDecision(allowed=True),
         "logged": [],
         "turns": [],
+        "confirms": [],
         "turn": agent.Turn(
             system="SYSTEM",
             reply="Which day?",
@@ -42,15 +43,20 @@ def wired(monkeypatch, use_settings):
     async def fake_log_usage(**row):
         state["logged"].append(row)
 
-    async def fake_run_turn(messages, confirmation, ip_hash):
-        state["turns"].append((messages, confirmation, ip_hash))
+    async def fake_run_turn(messages):
+        state["turns"].append((messages, None, None))
         if isinstance(state["turn"], Exception):
             raise state["turn"]
+        return state["turn"]
+
+    async def fake_confirm_turn(messages, confirmation, ip_hash):
+        state["confirms"].append((messages, confirmation, ip_hash))
         return state["turn"]
 
     monkeypatch.setattr(booking_routes, "authorize_demo", fake_authorize_demo)
     monkeypatch.setattr(booking_routes, "log_usage", fake_log_usage)
     monkeypatch.setattr(booking_routes.agent, "run_turn", fake_run_turn)
+    monkeypatch.setattr(booking_routes.agent, "confirm_turn", fake_confirm_turn)
     return state
 
 
@@ -71,17 +77,18 @@ def test_a_message_runs_one_turn_and_logs_one_booking_row(wired):
         {"role": "user", "content": "Thursday?"},
         {"role": "assistant", "content": "Which day?"},
     ]
-    assert body["prompt"]["system"] == "SYSTEM" and len(body["prompt"]["tools"]) == 3
+    assert body["prompt"]["system"] == "SYSTEM" and len(body["prompt"]["tools"]) == 2
 
-    [(messages, confirmation, ip_hash)] = wired["turns"]
-    assert messages[-1] == {"role": "user", "content": "Thursday?"} and confirmation is None
+    [(messages, _, _)] = wired["turns"]
+    assert messages[-1] == {"role": "user", "content": "Thursday?"} and wired["confirms"] == []
     [row] = wired["logged"]
     assert (row["surface"], row["outcome"], row["status"]) == ("booking", "replied", 200)
     assert (row["input_tokens"], row["output_tokens"]) == (3000, 200)
-    assert row["model"] == "claude-haiku-5-5" and row["client_ip_hash"] == ip_hash
+    assert row["model"] == "claude-haiku-5-5"
+    assert row["client_ip_hash"] == booking_routes.hash_ip("testclient")
 
 
-def test_confirm_passes_the_confirmation_through_and_writes_the_user_turn(wired):
+def test_confirm_goes_to_code_not_to_the_model_loop(wired):
     confirmation = {"slot_id": SLOT_ID, "expires_at": 1, "signature": "anything"}
     wired["turn"].outcome = "booked"
     wired["turn"].booking = {"confirmation_code": "FC-3F9A2C", "display": "Tue Dec 1"}
@@ -91,11 +98,22 @@ def test_confirm_passes_the_confirmation_through_and_writes_the_user_turn(wired)
 
     assert response.status_code == 200
     assert response.json()["booking"]["confirmation_code"] == "FC-3F9A2C"
-    [(messages, passed, _)] = wired["turns"]
-    # The route does not judge the signature: book_slot does, inside the loop
-    assert passed == confirmation
+    assert wired["turns"] == []
+    [(messages, passed, ip_hash)] = wired["confirms"]
+    # The route checks the shape only: confirm_turn judges the signature
+    assert passed == confirmation and ip_hash == booking_routes.hash_ip("testclient")
     assert messages[-1]["content"] == agent.confirm_message(SLOT_ID)
-    assert wired["logged"][0]["outcome"] == "booked"
+    assert (wired["logged"][0]["outcome"], wired["logged"][0]["detail"]) == ("booked", "FC-3F9A2C")
+
+
+def test_a_failed_confirm_logs_why(wired):
+    wired["turn"].outcome = "not_booked"
+    wired["turn"].booking_error = "confirmation_invalid"
+    confirmation = {"slot_id": SLOT_ID, "expires_at": 1, "signature": "forged"}
+    client.post("/api/book", json={"history": HISTORY, "action": "confirm",
+                                   "confirmation": confirmation})  # fmt: skip
+    [row] = wired["logged"]
+    assert (row["outcome"], row["detail"]) == ("not_booked", "confirmation_invalid")
 
 
 @pytest.mark.parametrize(
@@ -107,15 +125,15 @@ def test_confirm_without_a_well_formed_slot_id_is_rejected(wired, confirmation):
     response = client.post("/api/book", json=payload)
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_request"
-    assert wired["turns"] == [] and wired["logged"] == []
+    assert wired["turns"] == wired["confirms"] == [] and wired["logged"] == []
 
 
 def test_decline_sends_the_fixed_decline_turn_and_no_confirmation(wired):
     payload = {"history": HISTORY, "action": "decline",
                "confirmation": {"slot_id": SLOT_ID, "expires_at": 1, "signature": "s"}}  # fmt: skip
     assert client.post("/api/book", json=payload).status_code == 200
-    [(messages, confirmation, _)] = wired["turns"]
-    assert messages[-1]["content"] == agent.DECLINE_MESSAGE and confirmation is None
+    [(messages, _, _)] = wired["turns"]
+    assert messages[-1]["content"] == agent.DECLINE_MESSAGE and wired["confirms"] == []
 
 
 @pytest.mark.parametrize(
