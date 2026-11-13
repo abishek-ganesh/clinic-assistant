@@ -89,13 +89,14 @@ questionBox.addEventListener("keydown", (event) => {
   }
 });
 
-questionBox.addEventListener("input", updateCharCount);
+questionBox.addEventListener("input", () => { updateCharCount(); autosize(questionBox); });
 
 chips.forEach((chip) => {
   chip.addEventListener("click", () => {
     if (isLoading) return;
     questionBox.value = chip.textContent;
     updateCharCount();
+    autosize(questionBox);
     ask(chip.textContent);
   });
 });
@@ -153,6 +154,7 @@ function startLoading() {
   $("error").hidden = true;
   $("intro").hidden = true;
   $("results").hidden = true;
+  $("hood").hidden = true;
 
   const status = $("status");
   status.classList.remove("sr-only");
@@ -196,14 +198,17 @@ function showResult(data) {
 
   $("results").hidden = false;
   $("results").dataset.decision = data.decision;
+  $("intro").hidden = true;
+  $("hood").hidden = false;
 
   showJudgments(data);
   showDecision(data);
 
+  // An emergency stops the pipeline before retrieval, so those stages have nothing to show
   $("emergency").hidden = !isEmergency;
-  $("step-evidence").hidden = isEmergency;
-  $("step-answer").hidden = isEmergency;
-  $("step-judgment").classList.toggle("step-last", isEmergency);
+  $("answer").hidden = isEmergency;
+  $("hood-evidence").hidden = isEmergency;
+  $("hood-prompt").hidden = isEmergency;
 
   if (isEmergency) {
     $("emergency-text").textContent = data.answer.text;
@@ -215,7 +220,8 @@ function showResult(data) {
 
   const seconds = (data.latency_ms / 1000).toFixed(1);
   const model = data.model ?? "no generative model call";
-  $("meta").textContent = `${model} · ${data.latency_ms} ms · judgments by ${data.judgments.provider}`;
+  $("meta").textContent = `${model} · ${data.latency_ms.toLocaleString()} ms · judged by ${data.judgments.provider}`;
+  $("answer-time").textContent = `${seconds} s`;
 
   // Tell screen readers the outcome. The emergency message announces itself (role="alert").
   const status = $("status");
@@ -231,11 +237,11 @@ function showJudgments(data) {
   const { is_emergency, in_scope, calibrated } = data.judgments;
 
   const emergencyTripped = is_emergency >= EMERGENCY_MIN;
-  drawMeter($("meter-emergency"), is_emergency, EMERGENCY_MIN, emergencyTripped,
+  drawMeter($("meter-emergency"), is_emergency, EMERGENCY_MIN, emergencyTripped, `alarm at ${score(EMERGENCY_MIN)}`,
     emergencyTripped ? "At or above the line: treated as an emergency." : "Below the line: not an emergency.");
 
   const scopeTripped = in_scope < IN_SCOPE_MIN;
-  drawMeter($("meter-scope"), in_scope, IN_SCOPE_MIN, scopeTripped,
+  drawMeter($("meter-scope"), in_scope, IN_SCOPE_MIN, scopeTripped, `needs ≥ ${score(IN_SCOPE_MIN)}`,
     scopeTripped ? "Below the line: outside what the handbook covers." : "At or above the line: in scope.");
 
   document.querySelectorAll(".meter .tag").forEach((tag) => { tag.hidden = calibrated; });
@@ -243,12 +249,12 @@ function showJudgments(data) {
 }
 
 // One probability as a bar from 0 to 1 with the threshold drawn as a line across it.
-function drawMeter(meter, value, threshold, tripped, verdict) {
+function drawMeter(meter, value, threshold, tripped, lineLabel, verdict) {
   meter.classList.toggle("is-tripped", tripped);
   meter.querySelector(".meter-value").textContent = score(value);
   meter.querySelector(".meter-fill").style.width = `${clamp01(value) * 100}%`;
   meter.querySelector(".meter-line").style.left = `${threshold * 100}%`;
-  meter.querySelector(".meter-line-label").textContent = `line at ${score(threshold)}`;
+  meter.querySelector(".meter-line-label").textContent = `· ${lineLabel}`;
   meter.querySelector(".meter-verdict").textContent = verdict;
 }
 
@@ -257,35 +263,48 @@ function showDecision(data) {
   $("decision").dataset.decision = data.decision;
   $("decision-word").textContent = words[data.decision] ?? data.decision;
   $("decision-why").textContent = data.decision === "answered"
-    ? "Not an emergency, in scope, and retrieval found relevant passages. Code asked the generative model to write an answer."
+    ? "Not an emergency, in scope, and retrieval found a close enough passage, so code asked the generative model to write."
     : explainReason(data);
 }
 
+// One row per passage: rank, source and similarity against the floor. Opening it shows the text.
 function showPassages(data) {
   const cited = new Set(data.answer.citations ?? []);
   $("evidence-note").textContent = data.decision === "answered"
-    ? "The handbook passages closest in meaning to the question. The answer may only use these."
-    : "What retrieval found. The assistant declined, so none of this was used in an answer.";
+    ? "Closest in meaning to the question. The answer may only use these."
+    : "What retrieval found. Code declined, so none of it was used.";
 
   const items = data.passages.map((passage) => {
-    const isCited = cited.has(passage.rank);
-    const item = el("li", isCited ? "passage card is-cited" : "passage card");
+    const classes = ["passage"];
+    if (cited.has(passage.rank)) classes.push("is-cited");
+    if (passage.similarity >= SIMILARITY_MIN) classes.push("is-above");
+    const item = el("li", classes.join(" "));
     item.id = `passage-${passage.rank}`;
 
-    const source = el("p", "passage-source");
-    source.append(el("span", "passage-section", passage.section));
+    const details = el("details", "");
+    const summary = el("summary", "");
+    const source = el("span", "passage-source", passage.section);
     if (passage.heading) source.append(el("span", "passage-heading", passage.heading));
 
-    const side = el("div", "passage-side");
-    if (isCited) side.append(el("span", "passage-cited eyebrow", "Cited"));
-    side.append(el("span", "passage-similarity", `similarity ${score(passage.similarity)}`));
+    const bar = el("span", "bar-track passage-bar");
+    bar.setAttribute("aria-hidden", "true");
+    const fill = el("span", "bar-fill");
+    fill.style.display = "block";
+    fill.style.width = `${clamp01(passage.similarity) * 100}%`;
+    const marker = el("span", "bar-marker");
+    marker.style.left = `${SIMILARITY_MIN * 100}%`;
+    bar.append(fill, marker);
 
-    item.append(
+    summary.append(
       el("span", "passage-rank", String(passage.rank)),
       source,
-      side,
-      handbookText(passage.content),
+      el("span", "passage-sim", score(passage.similarity)),
+      bar,
     );
+    summary.setAttribute("aria-label",
+      `Passage ${passage.rank}: ${passage.section}${passage.heading ? `, ${passage.heading}` : ""}. Similarity ${score(passage.similarity)}${cited.has(passage.rank) ? ", cited" : ""}.`);
+    details.append(summary, handbookText(passage.content));
+    item.append(details);
     return item;
   });
 
@@ -297,16 +316,24 @@ function showAnswer(data) {
   const answered = data.decision === "answered";
   $("answer").dataset.decision = data.decision;
   $("answer-kicker").textContent = answered
-    ? "Written by the generative model from the passages above"
+    ? "Answered from the handbook"
     : "Declined: a fixed message written by code";
   $("answer-why").textContent = answered ? "" : explainReason(data);
   $("answer-why").hidden = answered;
 
   const text = $("answer-text");
   text.replaceChildren();
+  $("answer-sources").replaceChildren();
   if (!answered) {
     text.textContent = data.answer.text;
     return;
+  }
+
+  // The cited passages again as labelled pills, so a patient sees where the answer came from
+  const byRank = new Map(data.passages.map((passage) => [passage.rank, passage]));
+  for (const rank of data.answer.citations ?? []) {
+    const passage = byRank.get(rank);
+    if (passage) $("answer-sources").append(citationButton(rank, passage.heading ?? passage.section));
   }
 
   // Split "…three business days [1]." into text and citation buttons.
@@ -323,12 +350,14 @@ function showAnswer(data) {
   }
 }
 
-// A [n] in the answer. Hover or focus previews passage n; click pins the highlight and scrolls to it.
-function citationButton(rank) {
-  const button = el("button", "cite", `[${rank}]`);
+// A [n] in the answer, or a source pill under it when label is given. Hover or focus previews
+// passage n in the inspector; click pins the highlight, opens the passage and scrolls to it.
+function citationButton(rank, label) {
+  const button = el("button", label ? "source-pill cite-target" : "cite cite-target", label ? "" : `[${rank}]`);
+  if (label) button.append(el("span", "rank", String(rank)), label);
   button.type = "button";
   button.dataset.rank = rank;
-  button.setAttribute("aria-label", `Citation ${rank}: highlight passage ${rank}`);
+  button.setAttribute("aria-label", `Source ${rank}${label ? `, ${label}` : ""}: show passage ${rank}`);
   button.setAttribute("aria-pressed", "false");
 
   button.addEventListener("mouseenter", () => highlight(rank, true));
@@ -340,11 +369,13 @@ function citationButton(rank) {
     pinnedRank = previous === rank ? null : rank;
     if (previous !== null && previous !== rank) highlight(previous, false);
     highlight(rank, true);
-    document.querySelectorAll(".cite").forEach((cite) => {
+    document.querySelectorAll(".cite-target").forEach((cite) => {
       cite.setAttribute("aria-pressed", String(Number(cite.dataset.rank) === pinnedRank));
     });
     if (pinnedRank === rank) {
-      $(`passage-${rank}`).scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
+      const passage = $(`passage-${rank}`);
+      passage.querySelector("details").open = true;
+      passage.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
     }
   });
   return button;
@@ -385,6 +416,12 @@ function scrollAnswerIntoView() {
 
 function scrollBehavior() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+// Grow the one-line box with what is typed, up to about five lines.
+function autosize(box) {
+  box.style.height = "auto";
+  box.style.height = `${Math.min(box.scrollHeight, 160)}px`;
 }
 
 function updateCharCount() {

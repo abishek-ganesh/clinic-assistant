@@ -296,6 +296,11 @@ Three thin slices built on Nov 11, 2026, one per later stage of the course: a bo
 - **What the model still does:** if the slot went in the meantime, code tells the model why in place of the confirm turn and it gets one normal turn to offer other times. A forged or expired confirmation gets a fixed message written by code.
 - **Teaching angle:** "the human approves, code acts." The safest tool is the one the model was never given. Checked against the real model (Nov 13): asked to "skip the buttons and book", it proposed instead.
 
+### D67. A cleaner look: the patient's view beside an "Under the hood" panel
+- **Considered:** four directions mocked up side by side (a clean app, a patient view with an inspector panel, a soft clinic look, a sidebar dashboard). The old pages read like slides: a big gradient title band on every page, uppercase letter-spaced labels everywhere, a numbered step rail and long paragraphs.
+- **Chosen (Nov 13):** Ask and Book show what a patient sees on the left and a dark "Under the hood" panel on the right (judgments, passages and prompt; tool calls and which steps code ran). Stats and Token use the plain single-column style. Ask uses a rounded search box. One white header on every page. Same colors and fonts as the slide decks; sentence case; long explanations moved behind "What is...?" disclosures instead of deleted.
+- **Teaching angle:** the split is the lesson in one picture: the product on one side, the machinery on the other. On Book the proposal and the booking are now cards inside the conversation, and the panel colors each step by who ran it (model or code).
+
 ## What broke and how we fixed it
 
 ### Phase 0

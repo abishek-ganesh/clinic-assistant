@@ -44,9 +44,9 @@ REFUSALS = {
         429,
         "Several links were already sent to this address. Try again in an hour.",
     ),
-    "link_invalid": (410, "This link is not valid. Request a new one below."),
-    "link_used": (410, "This link was already used. Request a new one below."),
-    "link_expired": (410, "This link has expired. Request a new one below."),
+    "link_invalid": (410, "This link is not valid. Request a new one with the form above."),
+    "link_used": (410, "This link was already used. Request a new one with the form above."),
+    "link_expired": (410, "This link has expired. Request a new one with the form above."),
 }
 UPSTREAM_MESSAGE = "Something on our side failed. Try again in a moment."
 

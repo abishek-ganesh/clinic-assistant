@@ -7,7 +7,7 @@ const DEFAULT_WINDOW = 30;
 
 // Plain names for the values usage_log stores. An unknown value is shown as it is stored.
 const SURFACES = {
-  demo: "Demo page",
+  demo: "Ask page",
   endpoint: "Class endpoint",
   booking: "Booking agent",
   mcp: "MCP server",
@@ -15,13 +15,15 @@ const SURFACES = {
   eval: "CI eval",
 };
 
+// In the order the stacked bar draws them. Each key is also a color class in stats.css.
 const OUTCOMES = {
-  answered: ["Answered", "the handbook covered it"],
-  declined: ["Declined", "out of scope, or nothing relevant found"],
-  emergency: ["Emergency", "fixed call-911 message, nothing generated"],
-  denied: ["Denied", "over a rate limit or the spend cap"],
-  error: ["Error", "a provider or the database failed"],
+  answered: "Answered",
+  declined: "Declined",
+  emergency: "Emergency message",
+  denied: "Denied",
+  error: "Error",
 };
+const OUTCOME_ORDER = Object.keys(OUTCOMES);
 
 const $ = (id) => document.getElementById(id);
 const buttons = document.querySelectorAll(".range-button");
@@ -92,7 +94,7 @@ function showError(help, code) {
 function render(data) {
   const span = `${shortDate(data.first_day)} to ${shortDate(data.last_day)}`;
   $("window-note").textContent =
-    `${span}: the last ${data.days} days, in Eastern time. Cost is the exception. It is counted for the calendar month, because the cap is monthly.`;
+    `${span}: the last ${data.days} days, in Eastern time. Cost counts the calendar month, because the cap is monthly.`;
   renderTiles(data);
   renderDaily(data, span);
   renderSurfaces(data);
@@ -123,24 +125,23 @@ function renderTiles(data) {
   const speed = data.latency.demo_answered;
   setValue("tile-latency", speed.count ? duration(speed.p50_ms) : null);
   $("tile-latency-detail").textContent = speed.count
-    ? `p95 ${duration(speed.p95_ms)}, from ${plural(speed.count, "answer")}`
-    : "No answered demo questions in this window";
+    ? `p95 ${duration(speed.p95_ms)} · ${plural(speed.count, "answer")}`
+    : "No answered questions in this window";
 
   const declined = count(demo.outcomes, "declined");
   setValue("tile-decline", demo.completed ? percent(demo.decline_rate) : null);
   $("tile-decline-detail").textContent = demo.completed
-    ? `${integer(declined)} of ${plural(demo.completed, "demo question")}`
-    : "No demo questions in this window";
+    ? `${integer(declined)} of ${plural(demo.completed, "question")}`
+    : "No questions in this window";
 }
 
-// One bar per day, a three-tick axis, and a readout line that follows the pointer.
+// One bar per day, scaled to the busiest, and a readout line that follows the pointer.
 function renderDaily(data, span) {
   const days = data.daily;
   const busiest = days.reduce((top, day) => (day.requests > top.requests ? day : top), days[0]);
-  const top = axisTop(busiest.requests);
-  const summary = `Busiest day: ${longDate(busiest.day)}, ${plural(busiest.requests, "request")}`;
+  const top = Math.max(busiest.requests, 1);
+  const summary = `Busiest: ${longDate(busiest.day)} · ${integer(busiest.requests)}`;
 
-  $("chart-axis").replaceChildren(...[top, top / 2, 0].map((tick) => el("span", integer(tick))));
   const middle = days[Math.floor((days.length - 1) / 2)];
   const labels = days.length > 2 ? [days[0], middle, days.at(-1)] : days;
   $("chart-dates").replaceChildren(...labels.map((day) => el("span", shortDate(day.day))));
@@ -150,20 +151,20 @@ function renderDaily(data, span) {
   const bars = $("chart-bars");
   bars.setAttribute(
     "aria-label",
-    `Bar chart of requests per day, ${span}. ${integer(data.totals.requests)} in total. ${summary}. The table below has every day.`,
+    `Bar chart of requests per day, ${span}. ${integer(data.totals.requests)} in total. Busiest day: ${longDate(busiest.day)}, ${plural(busiest.requests, "request")}. The table below has every day.`,
   );
   bars.replaceChildren(
     ...days.map((day) => {
       const column = el("div");
       column.className = "day";
       const bar = el("div");
-      bar.className = "day-bar";
-      // A day with any requests always shows at least a sliver
-      bar.style.height = day.requests ? `max(2px, ${(day.requests / top) * 100}%)` : "0";
+      bar.className = day.requests ? "day-bar" : "day-bar is-zero";
+      // A day with any requests always shows at least a sliver, taller than the empty-day stub
+      if (day.requests) bar.style.height = `max(5px, ${(day.requests / top) * 100}%)`;
       column.append(bar);
       column.addEventListener("pointerenter", () => {
         readout.textContent =
-          `${longDate(day.day)}: ${plural(day.requests, "request")}, ${money(day.cost_usd, 4)} est. cost`;
+          `${longDate(day.day)}: ${plural(day.requests, "request")} · ${money(day.cost_usd, 4)} est. cost`;
       });
       return column;
     }),
@@ -178,12 +179,13 @@ function renderDaily(data, span) {
   );
 }
 
+// Bars are scaled to the busiest surface so the smaller ones stay readable.
 function renderSurfaces(data) {
-  const total = data.totals.requests;
+  const most = Math.max(1, ...data.by_surface.map((item) => item.requests));
   $("surface-rows").replaceChildren(
     ...data.by_surface.map((item) =>
       row(SURFACES[item.surface] ?? item.surface, [integer(item.requests), money(item.cost_usd, 4)], {
-        share: item.requests / total,
+        share: item.requests / most,
       }),
     ),
   );
@@ -191,61 +193,82 @@ function renderSurfaces(data) {
     `Tokens in this window: ${compact(data.totals.input_tokens)} in, ${compact(data.totals.output_tokens)} out.`;
 }
 
+// One stacked bar plus a legend list. The legend carries the numbers, so the bar is hidden from screen readers.
 function renderOutcomes(data) {
   const demo = data.demo;
-  $("outcome-rows").replaceChildren(
-    ...demo.outcomes.map((item) => {
-      const [name, note] = OUTCOMES[item.outcome] ?? [item.outcome, ""];
-      const share = item.requests / demo.requests;
-      return row(name, [integer(item.requests), percent(share)], { share, note });
+  const rank = (outcome) => (OUTCOMES[outcome] ? OUTCOME_ORDER.indexOf(outcome) : OUTCOME_ORDER.length);
+  const items = [...demo.outcomes].sort((a, b) => rank(a.outcome) - rank(b.outcome));
+  const colorClass = (outcome) => (OUTCOMES[outcome] ? `out-${outcome}` : "out-other");
+
+  $("outcome-bar").replaceChildren(
+    ...items.map((item) => {
+      const part = el("div");
+      part.className = colorClass(item.outcome);
+      part.style.width = `${(item.requests / demo.requests) * 100}%`;
+      return part;
+    }),
+  );
+  $("outcome-list").replaceChildren(
+    ...items.map((item) => {
+      const li = el("li");
+      li.className = colorClass(item.outcome);
+      const swatch = el("span");
+      swatch.className = "swatch";
+      const name = el("span", OUTCOMES[item.outcome] ?? item.outcome);
+      name.className = "legend-name";
+      const value = el("span", `${integer(item.requests)} · ${percent(item.requests / demo.requests)}`);
+      value.className = "num";
+      li.append(swatch, name, value);
+      return li;
     }),
   );
   if (!demo.requests) {
-    $("outcome-rows").replaceChildren(row("No demo questions in this window", ["", ""], { share: 0 }));
+    $("outcome-list").replaceChildren(el("li", "No questions in this window"));
   }
+
   $("outcome-why").textContent = demo.completed
-    ? `Rates count only the ${plural(demo.completed, "question")} the pipeline finished, so denied and error rows are left out: decline rate ${percent(demo.decline_rate)}, emergency rate ${percent(demo.emergency_rate)}. An emergency rate far above what a clinic expects points at a threshold set too low.`
-    : "Decline and emergency rates appear once the demo page has answered a question in this window.";
+    ? `Emergency rate ${percent(demo.emergency_rate)}. A rate far above what a clinic expects points at a threshold set too low.`
+    : "Decline and emergency rates appear once the Ask page has answered a question in this window.";
+  $("outcome-detail").textContent = demo.completed
+    ? `Rates count only the ${plural(demo.completed, "question")} the pipeline finished, so denied and error rows are left out: decline rate ${percent(demo.decline_rate)}, emergency rate ${percent(demo.emergency_rate)}.`
+    : "Rates count only the questions the pipeline finished, so denied and error rows are left out.";
 }
 
 function renderLatency(data) {
   const kinds = [
-    ["Demo answers", "question in to cited answer out", data.latency.demo_answered],
-    ["Class endpoint completions", "one model call", data.latency.endpoint_completions],
+    ["Handbook answers", data.latency.demo_answered],
+    ["Class endpoint completions", data.latency.endpoint_completions],
   ];
   $("latency-rows").replaceChildren(
-    ...kinds.map(([name, note, speed]) =>
+    ...kinds.map(([name, speed]) =>
       row(
         name,
         speed.count
           ? [integer(speed.count), duration(speed.p50_ms), duration(speed.p95_ms)]
           : ["0", "No data", "No data"],
-        { note },
       ),
     ),
   );
 }
 
 // One table row: a header cell, an optional bar cell, then right-aligned number cells.
-function row(name, numbers, { share = null, note = "" } = {}) {
+function row(name, numbers, { share = null } = {}) {
   const tr = el("tr");
   const head = el("th", name);
   head.scope = "row";
-  if (note) {
-    const small = el("span", note);
-    small.className = "row-note";
-    head.append(small);
-  }
   tr.append(head);
   if (share !== null) {
     const cell = el("td");
     cell.className = "bar-col";
+    const track = el("div");
+    track.className = "share-track";
     if (share > 0) {
       const bar = el("div");
-      bar.className = "bar";
+      bar.className = "share-fill";
       bar.style.width = `${share * 100}%`;
-      cell.append(bar);
+      track.append(bar);
     }
+    cell.append(track);
     tr.append(cell);
   }
   numbers.forEach((text) => {
@@ -269,13 +292,6 @@ function setValue(id, text) {
 
 function count(outcomes, name) {
   return outcomes.find((item) => item.outcome === name)?.requests ?? 0;
-}
-
-// The top of the y-axis: a round number at or above the busiest day, with a whole-number middle.
-function axisTop(value) {
-  if (value <= 10) return Math.max(4, Math.ceil(value / 2) * 2);
-  const power = 10 ** Math.floor(Math.log10(value));
-  return [1, 2, 4, 6, 8, 10].map((step) => step * power).find((step) => value <= step);
 }
 
 function integer(number) {

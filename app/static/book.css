@@ -1,199 +1,210 @@
-/* Booking page. Loaded after styles.css: tokens, the header, the step rail, cards, the
-   message form, chips, status and error states all come from there.
-   Order: layout, conversation, tool trace, confirmation, booking, small screens. */
+/* Booking page. Loaded after styles.css.
+   Order: conversation panel, bubbles, proposal and booked cards, the tool trace in the
+   inspector, small screens. */
 
-/* Step 1: conversation on the left, the agent's tool calls on the right, equal columns */
+/* Conversation panel: heading, the log, then examples and the message box */
 
-.book-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-large);
+}
+
+.chat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--rule);
+}
+.chat-head > div { flex: 1 1 18rem; }
+.chat-head h1 { font-size: 1.75rem; color: var(--navy-deep); }
+.chat-lede { margin-top: var(--space-1); color: var(--slate); font-size: 0.9375rem; }
+.chat-head .outline-button { min-height: 2.375rem; font-size: 0.875rem; }
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
-  margin-top: var(--space-5);
+  min-height: 22rem;
+  max-height: 34rem;
+  padding: var(--space-5);
+  overflow-y: auto;
 }
 
-/* Each column is a label, then a log. The logs share one height so their edges line up. */
-.chat, .trace {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: var(--space-2);
-  min-width: 0;
-}
+.chat-empty { color: var(--slate); font-size: 0.9375rem; }
 
-.chat-log, .trace-log {
+.chat-foot {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  height: 22rem;
-  padding: var(--space-4);
-  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: 1px solid var(--rule);
 }
-.trace-log { height: auto; min-height: 22rem; max-height: 31.6rem; }
+.chat-foot .search { box-shadow: 0 6px 24px rgb(0 48 135 / 0.1); border-color: var(--line-soft); }
+.chat-foot .search:focus-within { border-color: var(--accent); }
 
-.chat .ask-form { margin-top: var(--space-2); }
+.send-button {
+  width: 2.875rem;
+  padding: 0 !important;
+  display: grid;
+  place-items: center;
+}
 
-.chat-empty { color: var(--slate); font-size: 0.9rem; }
-
-/* Conversation: the visitor's turns sit right on a tint, the agent's sit left on white */
+/* Bubbles: the visitor on the right in navy, the agent on the left on a soft surface */
 
 .bubble {
-  max-width: 88%;
+  max-width: 82%;
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  font-size: 0.95rem;
+  font-size: 0.9375rem;
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
-.bubble .eyebrow { display: block; margin-bottom: var(--space-1); }
+.bubble .eyebrow { display: block; margin-bottom: var(--space-1); font-size: 0.75rem; }
 
-.bubble-user { align-self: flex-end; background: var(--tint); }
-.bubble-agent { align-self: flex-start; background: var(--white); }
+.bubble-user {
+  align-self: flex-end;
+  background: var(--navy);
+  color: var(--white);
+  border-radius: 1.125rem 1.125rem 0.25rem 1.125rem;
+}
+.bubble-user .eyebrow { color: var(--columbia); }
+
+.bubble-agent {
+  align-self: flex-start;
+  background: var(--surface-soft);
+  border-radius: 0.25rem 1.125rem 1.125rem 1.125rem;
+}
 /* A turn written by code (a proposal, a fixed message) is dashed, like a declined answer */
-.bubble-code { border: 1px dashed var(--slate); }
+.bubble-code { background: var(--white); border: 1.5px dashed var(--line); }
 
-/* Tool trace: one group per turn, one card per tool call. The 6px bar says what code did. */
+/* Cards inside the conversation: the pending proposal and a finished booking */
 
-.trace-turn { display: grid; gap: var(--space-2); }
-.trace-turn + .trace-turn { padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.chat-card {
+  align-self: flex-start;
+  width: min(100%, 30rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius);
+  scroll-margin: var(--space-4);
+}
+
+.proposal { border: 1px solid var(--line); background: var(--white); box-shadow: var(--shadow-soft); }
+
+.card-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--slate);
+  font-size: 0.8125rem;
+}
+
+.proposal-slot {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+.proposal-type { color: var(--slate); font-size: 0.875rem; }
+.proposal-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
+
+.booked {
+  align-self: stretch;
+  width: auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--teal-tint);
+}
+.booked-label { color: var(--teal-ink); font-size: 0.8125rem; font-weight: 600; }
+.booked-slot { font-family: var(--font-display); font-weight: 600; font-size: 1.1875rem; }
+.booked-code-box { display: flex; flex-direction: column; align-items: flex-end; }
+.booked-code {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 1.375rem;
+  letter-spacing: 0.04em;
+  color: var(--navy-deep);
+}
+.booked-note { width: 100%; color: var(--teal-ink); font-size: 0.8125rem; }
+
+/* Inspector: a legend, then one group per turn, one card per step */
+
+.legend { display: flex; gap: var(--space-3); font-size: 0.75rem; color: var(--ins-muted); }
+.legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.legend span::before { content: ""; width: 0.5rem; height: 0.5rem; border-radius: 2px; }
+.legend-model::before { background: var(--columbia); }
+.legend-code::before { background: #5fb3ba; }
+
+.trace-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-height: 36rem;
+  overflow-y: auto;
+}
+.trace-log .chat-empty { color: var(--ins-muted); }
+
+.trace-turn { display: flex; flex-direction: column; gap: var(--space-2); }
+.trace-turn > .eyebrow { color: var(--ins-muted); font-weight: 500; }
+.trace-none { color: var(--ins-muted); font-size: 0.875rem; }
 
 .tool-call {
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line);
-  border-left: 6px solid var(--navy);
+  background: var(--ins-surface);
+  border-left: 3px solid var(--columbia);
   border-radius: 0 var(--radius-small) var(--radius-small) 0;
 }
-.tool-call[data-kind="proposed"] { border-left-color: var(--accent); }
-.tool-call[data-kind="refused"] { border-left-color: var(--alarm); }
+.tool-call[data-by="code"] { border-left-color: #5fb3ba; background: rgb(95 179 186 / 0.12); }
+.tool-call[data-kind="refused"] { border-left-color: #e58a95; }
 
 .tool-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: var(--space-1) var(--space-3);
 }
-
-.tool-name {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--navy);
-}
-
-.tool-tag {
-  padding: 0 var(--space-2);
-  border: 1px solid var(--navy);
-  border-radius: 99px;
-  color: var(--navy);
-  letter-spacing: 0.06em;
-}
-.tool-call[data-kind="proposed"] .tool-tag { border-color: var(--accent); color: var(--accent); }
-.tool-call[data-kind="refused"] .tool-tag { border-color: var(--alarm); color: var(--alarm); }
+.tool-name { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; color: var(--white); }
+.tool-tag { font-size: 0.75rem; color: var(--ins-muted); }
+.tool-call[data-by="code"] .tool-tag { color: #9fd3d8; }
+.tool-call[data-kind="refused"] .tool-tag { color: #f2b3bb; }
 
 .tool-io {
   display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr);
+  grid-template-columns: 3.5rem minmax(0, 1fr);
   gap: var(--space-2) var(--space-3);
   align-items: start;
   margin-top: var(--space-3);
 }
-.tool-io .eyebrow { padding-top: var(--space-2); }
-
+.tool-io .eyebrow { padding-top: var(--space-1); font-size: 0.75rem; color: var(--ins-muted); font-weight: 500; }
 .tool-io pre {
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  max-height: 11rem;
+  max-height: 10rem;
   overflow: auto;
-  background: var(--navy-deep);
+  background: rgb(0 0 0 / 0.28);
   color: var(--code-fg);
-  border-radius: var(--radius-small);
+  border-radius: 0.5rem;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.6875rem;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.trace-none { color: var(--slate); font-size: 0.85rem; }
-
-/* Step 2: the proposal. Violet marks the one place a person decides. */
-
-.proposal, .booked {
-  margin-top: var(--space-5);
-  padding: var(--space-4) var(--space-5) var(--space-5);
-  border-top: 6px solid var(--accent);
-  scroll-margin: var(--space-4);
-}
-.booked { border-top-color: var(--navy); }
-
-.proposal-slot, .booked-slot {
-  margin-top: var(--space-2);
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 1.75rem;
-  line-height: 1.15;
-  letter-spacing: -0.015em;
-  color: var(--navy);
-}
-.booked-slot { font-size: 1.35rem; }
-
-.proposal-type { margin-top: var(--space-1); color: var(--slate); }
-
-.proposal-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-5);
-}
-
-.proposal-actions .outline-button { padding: var(--space-2) var(--space-6); font-size: 1.05rem; }
-
-.proposal-why {
-  margin-top: var(--space-5);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
-  font-size: 0.9rem;
-  color: var(--slate);
-}
-
-/* Step 3: the booking. The code is the largest thing on the page once it exists. */
-
-.booked-code {
-  margin-top: var(--space-2);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 2.2rem;
-  line-height: 1.1;
-  letter-spacing: 0.04em;
-  color: var(--navy);
-}
-
-.meta-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  padding-top: var(--space-5);
-}
-.meta-row .meta { flex: 1; }
-
-/* Small screens: one column, the trace under the conversation */
-
-@media (max-width: 56rem) {
-  .book-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
-  .trace-log { min-height: 0; max-height: 26rem; }
-  .chat-log { height: 20rem; }
-}
-
 @media (max-width: 40rem) {
-  .chat-log, .trace-log { padding: var(--space-3); }
-  .bubble { max-width: 94%; }
-  .tool-io { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
-  .tool-io .eyebrow { padding-top: var(--space-2); }
-  .proposal, .booked { padding: var(--space-4); }
-  .proposal-slot { font-size: 1.4rem; }
-  .booked-code { font-size: 1.8rem; }
+  .chat-head, .chat-log, .chat-foot { padding-left: var(--space-4); padding-right: var(--space-4); }
+  .chat-log { min-height: 9rem; }
+  .bubble { max-width: 92%; }
+  .chip { width: 100%; }
   .proposal-actions > * { flex: 1; }
-  .meta-row { padding-left: 0; }
+  .booked-code-box { align-items: flex-start; }
+  .tool-io { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
 }

@@ -100,7 +100,7 @@ Pushing to `main` deploys to Vercel. Environment variables live in the Vercel pr
 ## Layout
 
 ```
-app/            FastAPI app (main.py is the Vercel entry point); app/static/ holds the three pages
+app/            FastAPI app (main.py is the Vercel entry point); app/static/ holds the four pages
 handbook/       the fictional clinic's patient handbook, one Markdown file per topic
 eval/           questions with the section that should answer each, and with the facts a right answer needs
 tests/          pytest; HTTP is mocked with respx, integration tests are marked

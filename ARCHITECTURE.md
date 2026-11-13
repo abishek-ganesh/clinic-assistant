@@ -437,7 +437,7 @@ Step 2   the student opens the link and presses "Show my token"
 | Booking agent | `app/agent.py`, `app/booking_routes.py` | The tool loop with the signed confirmation; `/book` and `/api/book` |
 | MCP server | `app/mcp_server.py` | Two read-only tools at `/mcp`, stateless |
 | Usage stats | `app/stats.py`, `app/stats_routes.py` | `/stats` and `/api/stats`: aggregates from one Postgres function |
-| Pages | `app/static/` | Plain HTML, CSS and JavaScript: Ask the handbook (`index.html`), Book an appointment (`book.html`), Usage stats (`stats.html`). They share `styles.css` |
+| Pages | `app/static/` | Plain HTML, CSS and JavaScript: Ask (`index.html`), Book (`book.html`), Stats (`stats.html`), API token (`token.html`). They share `styles.css` (header, buttons, cards, the search box and the dark "Under the hood" panel); each page adds its own `.css` and `.js` |
 | Schema | `supabase/migrations/` | Tables, indexes, the functions below, row-level security |
 | Scripts | `scripts/` | `ingest.py`, `eval_retrieval.py`, `eval_answers.py`, `tokens.py`, `student_smoke.py`, `access_checks.py`, `check_migrations.sh` |
 | CI | `.github/workflows/ci.yml` | Lint and unit tests on every push and pull request; the answer eval on pushes to `main` |

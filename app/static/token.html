@@ -8,7 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23003087'/%3E%3Cpath d='M13 7h6v6h6v6h-6v6h-6v-6H7v-6h6z' fill='%23B9D9EB'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Schibsted+Grotesk:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="stylesheet" href="/static/token.css">
   <script src="/static/token.js" defer></script>
@@ -18,117 +18,143 @@
 
   <header class="site-header">
     <div class="wrap header-row">
-      <div class="brand">
-        <p class="eyebrow">Class endpoint</p>
-        <h1>Family Clinic Assistant</h1>
-        <div class="header-rule"></div>
-        <p class="tagline">Call a model from your own code. One token per student, with its own limits.</p>
-      </div>
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+        Family Clinic Assistant
+      </a>
+      <nav class="tabs" aria-label="Pages">
+        <a class="tab" href="/">Ask</a>
+        <a class="tab" href="/book">Book</a>
+        <a class="tab" href="/stats">Stats</a>
+        <a class="tab" href="/token" aria-current="page">API token</a>
+      </nav>
       <p class="notice">For students of the bootcamp</p>
     </div>
-    <nav class="wrap tabs" aria-label="Pages">
-      <a class="tab" href="/">Ask the handbook</a>
-      <a class="tab" href="/book">Book an appointment</a>
-      <a class="tab" href="/stats">Usage stats</a>
-      <a class="tab" href="/token" aria-current="page">Get an API token</a>
-    </nav>
   </header>
 
-  <main class="wrap">
-    <section class="step" aria-labelledby="title-what">
-      <div class="step-title">
-        <span class="step-num" aria-hidden="true">1</span>
-        <h2 id="title-what">What a token is for</h2>
-      </div>
-      <p class="step-note">The other pages on this site work without one. You need a token only when your own code calls a model through the class endpoint: in a notebook, a script or an app you are building.</p>
+  <main class="wrap token-page">
+    <div class="token-head">
+      <h1>Get an API token</h1>
+      <p>For calling a model from your own code: a notebook, a script or an app. The other pages work without one.</p>
+    </div>
 
-      <div class="facts">
-        <div class="fact card">
-          <p class="eyebrow">Same shape as OpenAI</p>
-          <p>The endpoint speaks OpenAI's chat completions format, so the <code>openai</code> package works unchanged. You set two values: the address and your token.</p>
-        </div>
-        <div class="fact card">
-          <p class="eyebrow">Your own allowance</p>
-          <p>Each token gets 20 requests a minute and 300 a day. The whole class shares one monthly budget, so a loop that runs away hurts everyone.</p>
-        </div>
-        <div class="fact card">
-          <p class="eyebrow">Treat it like a password</p>
-          <p>Keep it in an environment variable, never in code you commit. If it leaks, come back here and request a new one: the old one stops working.</p>
-        </div>
-      </div>
-    </section>
+    <ul class="facts" aria-label="About tokens">
+      <li class="fact card">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg>
+        <p><b>Works with the openai package.</b> Change two values: the address and your token.</p>
+      </li>
+      <li class="fact card">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <p><b>20 a minute, 300 a day.</b> The class shares one monthly budget.</p>
+      </li>
+      <li class="fact card">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <p><b>Treat it like a password.</b> Keep it in an environment variable.</p>
+      </li>
+    </ul>
 
-    <section class="step" aria-labelledby="title-request">
-      <div class="step-title">
-        <span class="step-num" aria-hidden="true">2</span>
-        <h2 id="title-request">Request a link</h2>
-      </div>
-      <p class="step-note">Enter your email and the class code from the class Slack. We email you a link that works once. Opening it shows your token on this page.</p>
+    <details class="prompt more">
+      <summary>More about tokens</summary>
+      <ul class="more-list">
+        <li>The endpoint speaks OpenAI's chat completions format, so the <code>openai</code> package works unchanged. You set the address and your token.</li>
+        <li>Each token gets 20 requests a minute and 300 a day. The whole class shares one monthly budget, so a loop that runs away hurts everyone.</li>
+        <li>Never put the token in code you commit. If it leaks, request a new one here: the old one stops working when you open the new link.</li>
+      </ul>
+    </details>
 
-      <form id="token-form" class="token-form card" novalidate>
-        <div class="field">
-          <label class="eyebrow" for="email">Email</label>
-          <input id="email" name="email" type="email" autocomplete="email" maxlength="254"
-                 placeholder="you@example.com" required>
-        </div>
-        <div class="field">
-          <label class="eyebrow" for="class-code">Class code</label>
-          <input id="class-code" name="class_code" type="text" autocomplete="off" autocapitalize="none"
-                 spellcheck="false" maxlength="100" placeholder="from the class Slack" required>
+    <section class="request card card-lift" aria-labelledby="title-request">
+      <h2 id="title-request">Request a link</h2>
+
+      <form id="token-form" class="token-form" novalidate>
+        <div class="fields">
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" maxlength="254"
+                   placeholder="you@example.com" aria-describedby="privacy" required>
+          </div>
+          <div class="field">
+            <label for="class-code">Class code</label>
+            <input id="class-code" class="mono" name="class_code" type="text" autocomplete="off" autocapitalize="none"
+                   spellcheck="false" maxlength="100" placeholder="From the class Slack" required>
+          </div>
         </div>
         <div class="form-row">
-          <p class="ask-help">Your email is stored with your token, so the instructor can see who holds which one, and is passed to our email provider to deliver the link.</p>
+          <p id="privacy" class="privacy">Your email labels your token so the instructor knows whose it is, and goes to our email provider to deliver the link.</p>
           <button id="submit-button" class="ask-button" type="submit">Email me a link</button>
         </div>
       </form>
 
-      <div id="sent" class="sent card" role="status" hidden>
-        <p class="eyebrow">Check your inbox</p>
-        <p id="sent-text" class="sent-text"></p>
-        <p class="sent-help">Not there after a minute? Look in spam, then request another link. Asking again does not affect a token you already have until you open the new link.</p>
+      <div id="sent" class="sent" role="status" hidden>
+        <span class="sent-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        <div>
+          <p class="sent-title">Check your inbox</p>
+          <p id="sent-text" class="sent-text"></p>
+          <p class="sent-help">Not there after a minute? Look in spam, then request another link. Asking again does not affect a token you already have until you open the new link.</p>
+        </div>
       </div>
 
-      <div id="error" class="error card" role="alert" hidden>
+      <div id="error" class="error" role="alert" hidden>
         <p id="error-title" class="error-title"></p>
         <p id="error-help" class="error-help"></p>
       </div>
     </section>
 
-    <section class="step step-last step-ghost" id="step-token" aria-labelledby="title-token">
-      <div class="step-title">
-        <span class="step-num" aria-hidden="true">3</span>
-        <h2 id="title-token">Your token</h2>
-      </div>
-      <p id="token-note" class="step-note">Open the link from your email and your token appears here, with a code sample you can paste into a notebook.</p>
+    <section class="next" aria-labelledby="title-next">
+      <h2 id="title-next">What happens next</h2>
+      <ol class="next-steps">
+        <li>
+          <span class="next-num" aria-hidden="true">1</span>
+          <span class="next-title">Check your inbox</span>
+          <span class="next-note">From tokens@abishekganesh.com. Look in spam too.</span>
+        </li>
+        <li>
+          <span class="next-num" aria-hidden="true">2</span>
+          <span class="next-title">Open the link</span>
+          <span class="next-note">It works once, for 15 minutes.</span>
+        </li>
+        <li>
+          <span class="next-num" aria-hidden="true">3</span>
+          <span class="next-title">Copy your token</span>
+          <span class="next-note">It is shown once. Lost it? Request a new one.</span>
+        </li>
+      </ol>
+    </section>
 
-      <div id="reveal" class="reveal card" hidden>
-        <p class="eyebrow">Your link is ready</p>
+    <section id="step-token" class="your-token" aria-labelledby="title-token" hidden>
+      <div>
+        <h2 id="title-token">Your token</h2>
+        <p id="token-note" class="token-note"></p>
+      </div>
+
+      <div id="reveal" class="reveal card card-lift" hidden>
+        <p class="reveal-title">Your link is ready</p>
         <p>The token is shown once. Have somewhere to paste it before you continue.</p>
         <button id="reveal-button" class="ask-button" type="button">Show my token</button>
       </div>
 
-      <div id="link-error" class="error card" role="alert" hidden>
+      <div id="link-error" class="error" role="alert" hidden>
         <p id="link-error-title" class="error-title"></p>
         <p id="link-error-help" class="error-help"></p>
       </div>
 
-      <div id="issued" aria-live="polite" hidden>
-        <div class="token-card card">
-          <p class="eyebrow">Shown once. Copy it now.</p>
-          <div class="token-row">
-            <code id="token-value" class="token-value" tabindex="0"></code>
-            <button id="copy-token" class="ask-button" type="button">Copy</button>
-          </div>
-          <p id="token-detail" class="token-detail"></p>
+      <div id="issued" class="token-card card card-lift" aria-live="polite" hidden>
+        <p class="token-label">Shown once. Copy it now.</p>
+        <div class="token-row">
+          <code id="token-value" class="token-value" tabindex="0"></code>
+          <button id="copy-token" class="ask-button" type="button">Copy</button>
         </div>
-
-        <div class="sample-head">
-          <p class="eyebrow">Try it</p>
-          <button id="copy-sample" class="outline-button" type="button">Copy the code</button>
-        </div>
-        <pre id="sample" class="sample" tabindex="0"></pre>
-        <p class="sample-note">Install the package first with <code>pip install openai</code>. Settings such as <code>temperature</code> are accepted and ignored, and the response tells you which ones.</p>
+        <p id="token-detail" class="token-detail"></p>
       </div>
+    </section>
+
+    <section class="use" aria-labelledby="title-use">
+      <div class="use-head">
+        <h2 id="title-use">Using it</h2>
+        <button id="copy-sample" class="outline-button" type="button">Copy the code</button>
+      </div>
+      <p class="use-note">Save your token as the environment variable <code>BOOTCAMP_TOKEN</code> first, then run this.</p>
+      <pre id="sample" class="code" tabindex="0" aria-labelledby="title-use"></pre>
+      <p class="use-note">Install the package with <code>pip install openai</code>. Settings such as <code>temperature</code> are accepted and ignored, and the response tells you which ones.</p>
     </section>
   </main>
 

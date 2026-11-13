@@ -64,7 +64,7 @@ def test_stats_page_serves_the_static_page_with_its_tab_marked_current():
     response = client.get("/stats")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    assert '<a class="tab" href="/stats" aria-current="page">Usage stats</a>' in response.text
+    assert 'href="/stats" aria-current="page"' in response.text
 
 
 async def test_get_stats_makes_one_rpc_call(monkeypatch):

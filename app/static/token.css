@@ -1,118 +1,193 @@
 /* Token page. Loaded after styles.css: only what this page adds. */
 
-/* Step 1: three short facts side by side */
+main.token-page {
+  max-width: 47.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding-top: var(--space-7);
+  padding-bottom: 4rem;
+}
+
+.token-page code { font-family: var(--font-mono); font-size: 0.9em; }
+
+.token-head { display: flex; flex-direction: column; gap: var(--space-2); }
+.token-head p { color: var(--slate); font-size: 1.0625rem; }
+
+/* Three one-line facts */
 .facts {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-4);
-  margin-top: var(--space-5);
+  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.fact { padding: var(--space-4) var(--space-5); border-top: 6px solid var(--navy); }
-.fact p + p { margin-top: var(--space-2); font-size: 0.9rem; }
+.fact {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: 0.875rem;
+  font-size: 0.875rem;
+}
+.fact svg { flex: 0 0 auto; margin-top: 0.125rem; color: var(--navy); }
+.fact b { font-weight: 600; }
 
-code { font-family: var(--font-mono); font-size: 0.9em; }
+.more { margin-top: -0.75rem; }
+.more-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-left: 1.25rem;
+  color: var(--slate);
+  font-size: 0.875rem;
+}
 
-/* Step 2: the form */
-.token-form {
+/* The request card */
+.request {
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  padding: 1.625rem;
+  border-radius: 1.125rem;
+}
+.token-form { display: flex; flex-direction: column; gap: 1.125rem; }
+.fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4) var(--space-5);
-  max-width: 44rem;
-  margin-top: var(--space-5);
-  padding: var(--space-5);
+  grid-template-columns: repeat(auto-fit, minmax(13.75rem, 1fr));
+  gap: 0.875rem;
 }
-.field { display: grid; gap: var(--space-2); }
+.field { display: flex; flex-direction: column; gap: 0.375rem; }
+.field label { font-size: 0.875rem; font-weight: 500; }
 .field input {
   width: 100%;
-  padding: var(--space-3) var(--space-4);
+  min-height: 2.875rem;
+  padding: 0 0.875rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-small);
-  background: var(--paper);
-  font: inherit;
-  color: inherit;
+  background: var(--white);
 }
-.field input:focus { outline: 3px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.field input.mono { font-size: 0.9375rem; }
 .field input::placeholder { color: #6b7790; }
+.field input:hover { border-color: var(--slate); }
+.field input:focus-visible { outline-offset: 0; border-color: var(--accent); }
+
 .form-row {
-  grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: 0.875rem;
 }
-.ask-button[aria-disabled="true"] { opacity: 0.6; cursor: progress; }
-.token-form ~ .error, .sent { max-width: 44rem; }
-.form-row .ask-help { max-width: 26rem; }
-.form-row .ask-button { flex: none; }
+.privacy { flex: 1 1 17.5rem; color: var(--slate); font-size: 0.8125rem; }
+.form-row .ask-button { flex: none; min-height: 2.875rem; padding: 0 1.375rem; }
 
 .sent {
-  margin-top: var(--space-5);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
-  border-left: 6px solid var(--navy);
-  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--teal-tint);
+  border-radius: var(--radius);
 }
-.sent-text { margin-top: var(--space-2); font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; }
-.sent-help { margin-top: var(--space-2); color: var(--slate); font-size: 0.9rem; }
+.sent-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--teal);
+  color: var(--white);
+}
+.sent-title { font-weight: 600; color: var(--teal-ink); }
+.sent-text { margin-top: var(--space-1); }
+.sent-help { margin-top: var(--space-2); color: var(--slate); font-size: 0.875rem; }
 
-.reveal {
-  max-width: 44rem;
-  margin-top: var(--space-5);
-  padding: var(--space-4) var(--space-5) var(--space-5);
-  border-top: 6px solid var(--accent);
+/* What happens next: three tinted tiles */
+.next, .your-token, .use { display: flex; flex-direction: column; gap: 0.875rem; }
+.next-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
+  gap: var(--space-3);
 }
-.reveal p + p { margin-top: var(--space-2); }
-.reveal .ask-button { margin-top: var(--space-4); }
+.next-steps li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: var(--space-4);
+  border-radius: 0.875rem;
+  background: var(--tint);
+}
+.next-num {
+  display: grid;
+  place-items: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--navy);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.next-title { font-weight: 600; }
+.next-note { color: var(--slate); font-size: 0.875rem; overflow-wrap: anywhere; }
 
-/* Step 3: the token and the sample */
-.token-card {
-  margin-top: var(--space-5);
-  padding: var(--space-4) var(--space-5) var(--space-5);
-  border-top: 6px solid var(--accent);
-}
+/* Arriving from the emailed link, and the token itself */
+.token-note { margin-top: var(--space-1); color: var(--slate); }
+
+.reveal, .token-card { padding: 1.625rem; border-radius: 1.125rem; }
+.reveal { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.reveal-title { font-family: var(--font-display); font-weight: 600; font-size: 1.125rem; }
+.reveal .ask-button { margin-top: var(--space-3); min-height: 2.875rem; }
+
+.token-label { font-size: 0.875rem; font-weight: 600; color: var(--slate); }
 .token-row {
   display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-3);
+  align-items: stretch;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
 }
 .token-value {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-small);
   background: var(--accent-tint);
   color: var(--navy-deep);
-  font-size: 0.95rem;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-.token-detail { margin-top: var(--space-3); color: var(--slate); font-size: 0.9rem; }
+.token-page .token-value { font-size: 0.9375rem; }
+.token-row .ask-button { flex: none; min-height: 2.875rem; }
+.token-detail { margin-top: var(--space-3); color: var(--slate); font-size: 0.875rem; }
 
-.sample-head {
+/* Using it: the code sample */
+.use-head {
   display: flex;
-  align-items: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  margin-top: var(--space-6);
+  gap: var(--space-3);
 }
-.sample {
-  margin: var(--space-3) 0 0;
-  padding: var(--space-4) var(--space-5);
-  overflow: auto;
-  background: var(--navy-deep);
-  color: var(--code-fg);
-  border-radius: var(--radius);
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  line-height: 1.6;
+.use-head .outline-button { min-height: 2.25rem; padding: 0 0.875rem; font-size: 0.875rem; }
+.use-note { color: var(--slate); font-size: 0.875rem; }
+.use .code {
+  margin: 0;
+  max-height: none;
+  padding: 1.25rem 1.375rem;
+  border-radius: 0.875rem;
+  line-height: 1.7;
 }
-.sample-note { margin-top: var(--space-3); max-width: 44rem; color: var(--slate); font-size: 0.9rem; }
 
-@media (max-width: 56rem) {
-  .facts { grid-template-columns: 1fr; }
-}
 @media (max-width: 40rem) {
-  .token-form { grid-template-columns: 1fr; padding: var(--space-4); }
-  .form-row, .token-row { flex-direction: column; align-items: stretch; }
-  .sample { padding: var(--space-4); }
+  main.token-page { padding-top: var(--space-5); padding-bottom: var(--space-6); gap: var(--space-5); }
+  .request, .reveal, .token-card { padding: var(--space-4); }
+  .form-row .ask-button, .reveal .ask-button { width: 100%; }
+  .token-row { flex-direction: column; }
+  .use .code { padding: var(--space-4); }
 }

@@ -59,13 +59,6 @@ const CODE_WRITTEN = Object.fromEntries(
   ["proposed", "booked", "not_booked", "refused", "step_limit"].map((outcome) => [outcome, "Written by code"]),
 );
 
-const NOTES = {
-  confirmIdle: "The model cannot book. When it has a slot for you it can only propose it, and the proposal waits here for you to confirm or decline.",
-  confirmWaiting: "The agent stopped and is waiting for you. Nothing is booked until you press Confirm.",
-  bookedIdle: "After you confirm, code checks the signature and inserts one row. The database allows one booking per provider and start time, so a slot cannot be booked twice.",
-  bookedDone: "Done. This appointment exists only in the demo's made-up schedule.",
-};
-
 const $ = (id) => document.getElementById(id);
 
 const form = $("book-form");
@@ -93,7 +86,7 @@ messageBox.addEventListener("keydown", (event) => {
   }
 });
 
-messageBox.addEventListener("input", updateCharCount);
+messageBox.addEventListener("input", () => { updateCharCount(); autosize(messageBox); });
 
 chips.forEach((chip) => {
   chip.addEventListener("click", () => sendMessage(chip.textContent));
@@ -127,6 +120,7 @@ function sendMessage(rawMessage) {
   addBubble("user", message);
   messageBox.value = "";
   updateCharCount();
+  autosize(messageBox);
   send({ action: "message", message });
 }
 
@@ -170,7 +164,7 @@ function showTurn(data) {
   addBubble("agent", data.reply, CODE_WRITTEN[data.outcome] ?? "Agent", Boolean(CODE_WRITTEN[data.outcome]));
   addTraceTurn(data);
   showProposal(data.proposal);
-  if (data.booking) showBooking(data.booking);
+  const bookedCard = data.booking ? showBooking(data.booking) : null;
 
   $("prompt").hidden = false;
   $("prompt-system").textContent = data.prompt.system;
@@ -187,12 +181,12 @@ function showTurn(data) {
   status.classList.add("sr-only");
   status.hidden = false;
   $("status-text").textContent = data.proposal
-    ? "The agent proposed a slot. Confirm and Decline buttons are in step 2."
+    ? "The agent suggested a time. Confirm and Decline buttons are at the end of the conversation."
     : data.booking
       ? `Booked. Confirmation code ${data.booking.confirmation_code}.`
       : "The agent replied.";
 
-  if (data.booking) scrollIntoViewIfBelow($("booked"));
+  if (bookedCard) scrollIntoViewIfBelow(bookedCard);
   else if (data.proposal) scrollIntoViewIfBelow($("proposal"));
 }
 
@@ -235,6 +229,7 @@ function toolCall(step) {
   const [kind, tag] = describeStep(step);
   const card = el("div", "tool-call");
   card.dataset.kind = kind;
+  card.dataset.by = step.by ?? "model";
 
   const head = el("div", "tool-head");
   head.append(el("span", "tool-name", step.tool), el("span", "tool-tag eyebrow", tag));
@@ -259,25 +254,38 @@ function describeStep(step) {
   return ["ran", "Ran"];
 }
 
-// Step 2: show the pending proposal, or fall back to the explanation when there is none.
+// The pending proposal: a card at the end of the conversation with Confirm and Decline.
+// One card element is reused; it goes back to its holder when there is no proposal.
 function showProposal(next) {
   proposal = next;
-  $("proposal").hidden = !proposal;
-  $("step-confirm").classList.toggle("step-ghost", !proposal);
-  $("confirm-note").textContent = proposal ? NOTES.confirmWaiting : NOTES.confirmIdle;
-  if (!proposal) return;
+  const card = $("proposal");
+  $("signed").hidden = !proposal;
+  if (!proposal) {
+    card.hidden = true;
+    $("proposal-home").append(card);
+    return;
+  }
   $("proposal-slot").textContent = proposal.slot.display;
   $("proposal-type").textContent = VISIT_LABELS[proposal.slot.visit_type] ?? proposal.slot.visit_type;
   $("proposal-signed").textContent = JSON.stringify(proposal.confirmation, null, 2);
+  const log = $("chat-log");
+  log.append(card);
+  card.hidden = false;
+  log.scrollTop = log.scrollHeight;
 }
 
-// Step 3: the booking code made, with the code the database returned.
+// A finished booking, added to the conversation with the code the database returned.
 function showBooking(booking) {
-  $("booked").hidden = false;
-  $("step-booked").classList.remove("step-ghost");
-  $("booked-note").textContent = NOTES.bookedDone;
-  $("booked-code").textContent = booking.confirmation_code;
-  $("booked-slot").textContent = booking.display;
+  const card = el("li", "chat-card booked");
+  const what = el("div", "");
+  what.append(el("p", "booked-label", "Booked"), el("p", "booked-slot", booking.display));
+  const code = el("div", "booked-code-box");
+  code.append(el("p", "booked-label", "Confirmation code"), el("p", "booked-code", booking.confirmation_code));
+  card.append(what, code, el("p", "booked-note", "Booked by code after your confirmation. This appointment exists only in the demo's made-up schedule."));
+  const log = $("chat-log");
+  log.append(card);
+  log.scrollTop = log.scrollHeight;
+  return card;
 }
 
 function startOver() {
@@ -286,10 +294,7 @@ function startOver() {
   turnCount = 0;
   lastPayload = null;
   showProposal(null);
-  $("booked").hidden = true;
-  $("step-booked").classList.add("step-ghost");
-  $("booked-note").textContent = NOTES.bookedIdle;
-  $("chat-log").replaceChildren(el("li", "chat-empty", "Nothing yet. Type a message below or pick an example."));
+  $("chat-log").replaceChildren(el("li", "chat-empty", "Say what kind of visit you want and roughly when, or pick an example below."));
   $("trace-log").replaceChildren(el("li", "chat-empty", "Each tool the model calls shows up here with its arguments and the result code sent back."));
   $("error").hidden = true;
   $("prompt").hidden = true;
@@ -345,6 +350,12 @@ function scrollIntoViewIfBelow(target) {
     const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     target.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" });
   }
+}
+
+// Grow the one-line box with what is typed, up to about five lines.
+function autosize(box) {
+  box.style.height = "auto";
+  box.style.height = `${Math.min(box.scrollHeight, 160)}px`;
 }
 
 function updateCharCount() {

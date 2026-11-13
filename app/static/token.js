@@ -1,5 +1,5 @@
 // Token page. Two steps: ask for a link (email + class code), then open the emailed link
-// and press a button to see the token once.
+// and press a button to see the token once. The code sample is filled in on load.
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,7 +24,7 @@ const NETWORK_MESSAGE = "The request did not reach the server. Check your connec
 const linkSecret = new URLSearchParams(location.hash.slice(1)).get("link");
 if (linkSecret) {
   history.replaceState(null, "", location.pathname);
-  $("step-token").classList.remove("step-ghost");
+  $("step-token").hidden = false;
   $("token-note").textContent = "You opened a link from your email. One more press shows the token.";
   $("reveal").hidden = false;
   $("step-token").scrollIntoView({ block: "start" });
@@ -45,7 +45,9 @@ function setBusy(button, busy, label) {
   button.textContent = busy ? "Working" : label;
 }
 
-// Step 2: ask for a link
+$("sample").textContent = sample();
+
+// Ask for a link
 $("token-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = $("submit-button");
@@ -71,7 +73,7 @@ $("token-form").addEventListener("submit", async (event) => {
   setBusy(button, false, "Email me a link");
 });
 
-// Step 3: a person presses the button. Opening the page alone never uses the link up, so a
+// Redeem the link: a person presses the button. Opening the page alone never uses the link up, so a
 // mail scanner that visits links before you do cannot spend it.
 $("reveal-button").addEventListener("click", async () => {
   const button = $("reveal-button");
@@ -105,18 +107,18 @@ function showToken(data) {
   $("token-detail").textContent = data.replaced
     ? `For ${data.email}. Your earlier token has been turned off.`
     : `For ${data.email}. It cannot be shown again, but you can always request a new one.`;
-  $("sample").textContent = sample(data.token);
   $("token-note").textContent = "This is the only time the token is shown. The server keeps a hash of it, not the token itself.";
   $("issued").hidden = false;
 }
 
-// The sample a student pastes into a notebook, with this site's address and their token
-function sample(token) {
-  return `from openai import OpenAI
+// The sample a student pastes into a notebook: this site's address, the token from the environment
+function sample() {
+  return `import os
+from openai import OpenAI
 
 client = OpenAI(
     base_url="${location.origin}/v1",
-    api_key="${token}",
+    api_key=os.environ["BOOTCAMP_TOKEN"],
 )
 
 reply = client.chat.completions.create(

@@ -1,0 +1,242 @@
+/* Ask page. Loaded after styles.css.
+   Order: question area, answer, emergency, inspector stages (meters, decision, passages). */
+
+/* Question area: a tinted panel with the heading, the search box and example chips */
+
+.ask-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-5);
+  background: var(--tint);
+  border-radius: var(--radius-large);
+}
+.ask-hero h1 { color: var(--navy-deep); font-size: 2.125rem; }
+.ask-lede { color: var(--slate); }
+.ask-form { margin-top: var(--space-1); }
+.ask-hero .chip { border-color: transparent; background: rgb(255 255 255 / 0.8); }
+.ask-hero .chip:hover { border-color: var(--navy); background: var(--white); }
+
+/* Answer card */
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-large);
+  scroll-margin: var(--space-4);
+}
+
+.answer-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.answer-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--teal-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.answer-kicker::before {
+  content: "";
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--teal-tint) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230E7C86' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") center / 0.8rem no-repeat;
+}
+
+.answer-text {
+  font-size: 1.3125rem;
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* A declined answer looks deliberately different: no model wrote it */
+.answer[data-decision="declined"] { border: 1.5px dashed var(--slate); box-shadow: none; }
+.answer[data-decision="declined"] .answer-kicker { color: var(--slate); }
+.answer[data-decision="declined"] .answer-kicker::before {
+  background: var(--surface-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234F5A6E' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E") center / 0.8rem no-repeat;
+}
+.answer[data-decision="declined"] .answer-text { font-size: 1.125rem; font-weight: 500; }
+
+.answer-why {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--rule);
+  color: var(--slate);
+  font-size: 0.9375rem;
+}
+
+.answer-sources { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.answer-sources:empty { display: none; }
+
+/* A citation: inline [n] in the answer, or a source pill under it. Both open passage n. */
+.cite {
+  display: inline-block;
+  margin: 0 0.1em;
+  padding: 0 0.4em;
+  border: 0;
+  border-radius: 0.375rem;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.75em;
+  font-weight: 500;
+  line-height: 1.6;
+  vertical-align: 0.15em;
+  cursor: pointer;
+}
+.cite:hover, .cite[aria-pressed="true"] { background: var(--accent); color: var(--white); }
+
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2rem;
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--navy);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.source-pill .rank { font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent); }
+.source-pill:hover, .source-pill[aria-pressed="true"] { background: var(--accent-tint); }
+
+/* Emergency: the one loud thing on the page */
+
+.emergency {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  background: var(--alarm);
+  color: var(--white);
+  border-radius: var(--radius-large);
+  scroll-margin: var(--space-4);
+}
+.emergency-kicker { font-size: 0.875rem; font-weight: 600; }
+.emergency-text {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.875rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.emergency-note { padding-top: var(--space-3); border-top: 1px solid rgb(255 255 255 / 0.4); font-size: 0.9375rem; }
+
+/* Inspector stages */
+
+.intro { display: flex; flex-direction: column; gap: var(--space-5); }
+.hood { display: flex; flex-direction: column; gap: var(--space-6); }
+
+.meter { display: flex; flex-direction: column; gap: var(--space-2); }
+.meter-row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 0.875rem; }
+.meter-row .mono { font-size: 0.8125rem; white-space: nowrap; }
+.meter .meter-fill { background: #5fb3ba; }
+#meter-emergency .meter-fill { background: #e58a95; }
+.meter.is-tripped .meter-verdict { color: var(--white); font-weight: 600; }
+#meter-emergency.is-tripped .meter-fill { background: #ff6b7d; }
+#meter-scope.is-tripped .meter-fill { background: var(--ins-muted); }
+
+.tag {
+  margin-left: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--ins-muted);
+  border-radius: 99px;
+  color: var(--ins-muted);
+  font-size: 0.75rem;
+}
+
+.decision { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.9375rem; }
+.decision-word {
+  display: inline-block;
+  padding: 0 var(--space-3);
+  border-radius: 99px;
+  background: #2f8f97;
+  color: var(--white);
+  font-weight: 600;
+}
+.decision[data-decision="declined"] .decision-word { background: #5d6b82; }
+.decision[data-decision="emergency"] .decision-word { background: var(--alarm); }
+
+/* Passages: one row per passage with its similarity bar against the floor; opens to the text */
+
+.passages { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.passage {
+  border-radius: var(--radius-small);
+  background: var(--ins-surface);
+  scroll-margin: var(--space-4);
+  transition: box-shadow 0.15s, background-color 0.15s;
+}
+.passage.is-highlighted { background: rgb(106 76 147 / 0.35); box-shadow: 0 0 0 2px #b9a3d9; }
+
+.passage summary {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  grid-template-areas:
+    "rank source sim"
+    "rank bar bar";
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
+  cursor: pointer;
+  list-style: none;
+}
+.passage summary::-webkit-details-marker { display: none; }
+
+.passage-rank {
+  grid-area: rank;
+  align-self: start;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.375rem;
+  background: var(--ins-track);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.passage.is-cited .passage-rank { background: var(--accent); color: var(--white); }
+
+.passage-source { grid-area: source; font-size: 0.875rem; font-weight: 500; overflow-wrap: anywhere; }
+.passage-heading { color: var(--ins-muted); font-weight: 400; }
+.passage-heading::before { content: " · "; }
+.passage-sim { grid-area: sim; font-family: var(--font-mono); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.passage-bar { grid-area: bar; height: 0.375rem; }
+.passage:not(.is-above) .passage-sim, .passage:not(.is-above) .passage-source { color: var(--ins-muted); }
+.passage:not(.is-above) .bar-fill { background: #6e86a8; }
+
+.passage-content {
+  padding: 0 var(--space-4) var(--space-4) 3.25rem;
+  color: var(--ins-fg);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.passage-content > * + * { margin-top: var(--space-2); }
+.passage-list { padding-left: 1.2em; list-style: disc; }
+.passage-list li + li { margin-top: 0.15em; }
+.passage-content strong { font-weight: 600; }
+
+@media (max-width: 40rem) {
+  .ask-hero { padding: var(--space-5) var(--space-4) var(--space-4); }
+  .ask-hero h1 { font-size: 1.75rem; }
+  .ask-hero .chip { width: 100%; }
+  .answer, .emergency { padding: var(--space-4); }
+  .answer-text { font-size: 1.1875rem; }
+  .emergency-text { font-size: 1.5rem; }
+  .passage-content { padding-left: var(--space-4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .passage { transition: none; }
+}
