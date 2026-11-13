@@ -2,9 +2,14 @@
 
 uv run python scripts/eval_retrieval.py
 
-Answerable questions pass when the top passage is from an expected section. Two-section questions
-pass when every expected section appears in the top TOP_K. Out-of-scope and emergency questions
-have no right passage, so only their top similarity is shown, next to SIMILARITY_MIN.
+Answerable questions pass when the top passage is from an expected section and its relevance
+clears RELEVANCE_MIN (under it, the pipeline would decline). Two-section questions pass when every
+expected section appears in the top TOP_K. Out-of-scope and emergency questions have no right
+passage, so only their top scores are shown, next to RELEVANCE_MIN.
+
+rel is the reranker's relevance for the top passage, the number the floor checks. sim is that
+passage's vector similarity, shown for comparison. Questions marked "terse": true are the short
+ones people actually type ("parking", "refill time") and get their own line in the summary.
 """
 
 import asyncio
@@ -16,11 +21,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.models import Passage  # noqa: E402
 from app.retrieval import check_corpus_model, retrieve  # noqa: E402
-from app.thresholds import SIMILARITY_MIN, TOP_K  # noqa: E402
+from app.thresholds import RELEVANCE_MIN, TOP_K  # noqa: E402
 
 QUESTIONS_PATH = Path(__file__).resolve().parent.parent / "eval" / "questions.jsonl"
 ANSWERABLE = ("single_section", "two_section")
-ROW = "{:<52} {:<28} {:<44} {:>5}  {}"
+ROW = "{:<52} {:<28} {:<44} {:>5} {:>5}  {}"
 
 
 def shorten(text: str, width: int) -> str:
@@ -28,12 +33,19 @@ def shorten(text: str, width: int) -> str:
 
 
 def passed(item: dict, passages: list[Passage]) -> bool:
-    """Single section: top passage is from an expected section. Two: all are in the top K."""
-    if not passages:
+    """Right section (single: top passage; two: all in the top K) and over the relevance floor."""
+    if not passages or passages[0].relevance < RELEVANCE_MIN:
         return False
     if item["type"] == "two_section":
         return set(item["expected_sections"]) <= {p.section_slug for p in passages}
     return passages[0].section_slug in item["expected_sections"]
+
+
+def scores(passages: list[Passage]) -> tuple[str, str]:
+    """The top passage's relevance and similarity, formatted for the table."""
+    if not passages:
+        return "", ""
+    return f"{passages[0].relevance:.3f}", f"{passages[0].similarity:.3f}"
 
 
 def describe(passage: Passage) -> str:
@@ -46,7 +58,7 @@ async def main() -> int:
     questions = [json.loads(line) for line in lines if line.strip()]
     results = [(item, await retrieve(item["question"], TOP_K)) for item in questions]
 
-    print(ROW.format("question", "expected", "top result", "sim", "result"))
+    print(ROW.format("question", "expected", "top result", "rel", "sim", "result"))
     print("-" * 140)
     failures = 0
     answerable = [(item, passages) for item, passages in results if item["type"] in ANSWERABLE]
@@ -58,7 +70,7 @@ async def main() -> int:
                 shorten(item["question"], 52),
                 shorten(" + ".join(item["expected_sections"]), 28),
                 shorten(describe(passages[0]), 44) if passages else "(nothing retrieved)",
-                f"{passages[0].similarity:.3f}" if passages else "",
+                *scores(passages),
                 "pass" if ok else "FAIL",
             )
         )
@@ -66,8 +78,8 @@ async def main() -> int:
             print(f"    top {TOP_K}: {', '.join(describe(p) for p in passages)}")
 
     print()
-    print("No right passage exists for these. Shown: the best similarity retrieval found anyway.")
-    print(ROW.format("question", "type", "top result", "sim", ""))
+    print("No right passage exists for these. Shown: the best passage retrieval found anyway.")
+    print(ROW.format("question", "type", "top result", "rel", "sim", ""))
     print("-" * 140)
     others = [(item, passages) for item, passages in results if item["type"] not in ANSWERABLE]
     for item, passages in others:
@@ -76,21 +88,29 @@ async def main() -> int:
                 shorten(item["question"], 52),
                 item["type"],
                 shorten(describe(passages[0]), 44) if passages else "(nothing retrieved)",
-                f"{passages[0].similarity:.3f}" if passages else "",
+                *scores(passages),
                 "",
             ).rstrip()
         )
 
     print()
     print(f"{len(answerable) - failures}/{len(answerable)} answerable questions passed")
-    groups = {"answerable": answerable}
+    groups = {
+        "full sentence": [(i, p) for i, p in answerable if not i.get("terse")],
+        "terse": [(i, p) for i, p in answerable if i.get("terse")],
+    }
     for kind in ("out_of_scope", "emergency"):
         groups[kind] = [(item, passages) for item, passages in others if item["type"] == kind]
     for name, group in groups.items():
-        top = [passages[0].similarity for _, passages in group if passages]
+        top = [passages[0] for _, passages in group if passages]
         if top:
-            print(f"top similarity, {name:<13} min {min(top):.3f}  max {max(top):.3f}")
-    print(f"SIMILARITY_MIN is {SIMILARITY_MIN}")
+            rel = [p.relevance for p in top]
+            sim = [p.similarity for p in top]
+            print(
+                f"top passage, {name:<13} relevance {min(rel):.3f} to {max(rel):.3f}"
+                f"   similarity {min(sim):.3f} to {max(sim):.3f}"
+            )
+    print(f"RELEVANCE_MIN is {RELEVANCE_MIN}")
     return 1 if failures else 0
 
 

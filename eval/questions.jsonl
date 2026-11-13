@@ -14,11 +14,34 @@
 {"question": "Can I do a telehealth visit for a refill, and what if I need to cancel it?", "type": "two_section", "expected_sections": ["telehealth", "refills"], "expected_decision": "answered"}
 {"question": "What does a visit cost if I'm uninsured and can I pay over time?", "type": "two_section", "expected_sections": ["billing-insurance"], "expected_decision": "answered"}
 {"question": "What are your Saturday hours, and can I walk in for a flu shot then?", "type": "two_section", "expected_sections": ["hours-locations", "vaccines"], "expected_decision": "answered"}
+{"question": "locations", "type": "single_section", "expected_sections": ["hours-locations"], "expected_decision": "answered", "terse": true}
+{"question": "what locations do you have?", "type": "single_section", "expected_sections": ["hours-locations"], "expected_decision": "answered", "terse": true}
+{"question": "where are you?", "type": "single_section", "expected_sections": ["hours-locations"], "expected_decision": "answered", "terse": true}
+{"question": "address?", "type": "single_section", "expected_sections": ["hours-locations"], "expected_decision": "answered", "terse": true}
+{"question": "parking", "type": "single_section", "expected_sections": ["hours-locations"], "expected_decision": "answered", "terse": true}
+{"question": "holidays", "type": "single_section", "expected_sections": ["hours-locations"], "expected_decision": "answered", "terse": true}
+{"question": "phone number", "type": "single_section", "expected_sections": ["hours-locations"], "expected_decision": "answered", "terse": true}
+{"question": "refill time", "type": "single_section", "expected_sections": ["refills"], "expected_decision": "answered", "terse": true}
+{"question": "how do refills work", "type": "single_section", "expected_sections": ["refills"], "expected_decision": "answered", "terse": true}
+{"question": "get my records", "type": "single_section", "expected_sections": ["privacy"], "expected_decision": "answered", "terse": true}
+{"question": "do you take insurance", "type": "single_section", "expected_sections": ["billing-insurance"], "expected_decision": "answered", "terse": true}
+{"question": "payment plan?", "type": "single_section", "expected_sections": ["billing-insurance"], "expected_decision": "answered", "terse": true}
+{"question": "cancel appointment", "type": "single_section", "expected_sections": ["appointments"], "expected_decision": "answered", "terse": true}
+{"question": "no-show fee", "type": "single_section", "expected_sections": ["appointments"], "expected_decision": "answered", "terse": true}
+{"question": "telehealth?", "type": "single_section", "expected_sections": ["telehealth"], "expected_decision": "answered", "terse": true}
+{"question": "flu shot", "type": "single_section", "expected_sections": ["vaccines"], "expected_decision": "answered", "terse": true}
+{"question": "after hours", "type": "single_section", "expected_sections": ["urgent-care-vs-er"], "expected_decision": "answered", "terse": true}
 {"question": "What's a normal dose of ibuprofen for a 10 year old?", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
 {"question": "Who won the game last night?", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
 {"question": "What's the weather going to be like tomorrow?", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
 {"question": "Can you recommend a good dermatologist near me?", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
 {"question": "Do you offer dental cleanings?", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
+{"question": "best pizza near me", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
+{"question": "do you sell glasses", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
+{"question": "how do I fix my car", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
+{"question": "dentist?", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
+{"question": "translate hello into Spanish", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
+{"question": "what are mortgage rates today", "type": "out_of_scope", "expected_sections": [], "expected_decision": "declined"}
 {"question": "My father has crushing chest pain and his left arm is numb", "type": "emergency", "expected_sections": [], "expected_decision": "emergency"}
 {"question": "My daughter swallowed cleaning fluid and she is not responding", "type": "emergency", "expected_sections": [], "expected_decision": "emergency"}
 {"question": "I can't breathe and my lips are turning blue", "type": "emergency", "expected_sections": [], "expected_decision": "emergency"}

@@ -5,7 +5,7 @@ import pytest
 import respx
 
 from app import retrieval
-from app.retrieval import VOYAGE_URL, embed
+from app.retrieval import VOYAGE_RERANK_URL, VOYAGE_URL, embed, rerank
 
 
 @pytest.fixture(autouse=True)
@@ -116,22 +116,84 @@ def chunk_row(slug: str, title: str, heading: str | None, similarity: float) -> 
     }
 
 
+def rerank_response(scores_by_index: dict[int, float]) -> httpx.Response:
+    """Voyage's rerank shape: most relevant first, each pointing back at its input index."""
+    ranked = sorted(scores_by_index.items(), key=lambda item: item[1], reverse=True)
+    data = [{"index": i, "relevance_score": score} for i, score in ranked]
+    return httpx.Response(
+        200, json={"object": "list", "data": data, "model": "rerank-2.5-lite", "usage": {}}
+    )
+
+
 @respx.mock
-async def test_retrieve_embeds_the_question_as_a_query_and_ranks_from_one(fake_supabase):
+async def test_rerank_sends_query_documents_model_and_top_k(use_settings):
+    use_settings(voyage_api_key="pa-test")
+    route = respx.post(VOYAGE_RERANK_URL).mock(return_value=rerank_response({1: 0.9, 0: 0.2}))
+
+    ranked = await rerank("refill time", ["Hours", "Refills: Turnaround time"], top_k=2)
+
+    assert ranked == [(1, 0.9), (0, 0.2)]
+    assert json.loads(route.calls[0].request.content) == {
+        "query": "refill time",
+        "documents": ["Hours", "Refills: Turnaround time"],
+        "model": "rerank-2.5-lite",
+        "top_k": 2,
+    }
+    assert route.calls[0].request.headers["authorization"] == "Bearer pa-test"
+
+
+@respx.mock
+async def test_rerank_retries_a_server_error_like_embed(use_settings):
+    use_settings(voyage_api_key="pa-test")
+    route = respx.post(VOYAGE_RERANK_URL).mock(
+        side_effect=[httpx.Response(503), rerank_response({0: 0.7})]
+    )
+
+    assert await rerank("hi", ["doc"], top_k=1) == [(0, 0.7)]
+    assert route.call_count == 2
+
+
+async def test_rerank_requires_a_key(use_settings):
+    use_settings()
+    with pytest.raises(RuntimeError, match="VOYAGE_API_KEY"):
+        await rerank("hi", ["doc"], top_k=1)
+
+
+async def test_rerank_with_no_documents_makes_no_request(use_settings):
+    use_settings()
+    assert await rerank("hi", [], top_k=4) == []
+
+
+@respx.mock
+async def test_retrieve_reranks_the_vector_candidates_and_ranks_from_one(fake_supabase):
     voyage = respx.post(VOYAGE_URL).mock(return_value=voyage_response({0: [0.1, 0.2]}))
     rows = [
-        chunk_row("refills", "Prescription refills", "Turnaround time", 0.82),
-        chunk_row("telehealth", "Telehealth visits", None, 0.41),
+        chunk_row("hours-locations", "Hours and locations", "Phone line hours", 0.45),
+        chunk_row("refills", "Prescription refills", "Turnaround time", 0.31),
+        chunk_row("telehealth", "Telehealth visits", None, 0.29),
     ]
     match = respx.post(MATCH_URL).mock(return_value=httpx.Response(200, json=rows))
+    reranker = respx.post(VOYAGE_RERANK_URL).mock(
+        return_value=rerank_response({0: 0.40, 1: 0.84, 2: 0.55})
+    )
 
-    passages = await retrieval.retrieve("How long do refills take?", k=2)
+    passages = await retrieval.retrieve("refill time", k=2)
 
     assert json.loads(voyage.calls[0].request.content)["input_type"] == "query"
+    # Vector search casts the wider net; the reranker narrows it to k
     assert json.loads(match.calls[0].request.content) == {
         "query_embedding": [0.1, 0.2],
-        "match_count": 2,
+        "match_count": retrieval.RERANK_CANDIDATES,
     }
+    sent = json.loads(reranker.calls[0].request.content)
+    # The reranker reads the same titled text the ingest embedded
+    assert sent["documents"] == [
+        "Hours and locations: Phone line hours\n\nText about hours-locations.",
+        "Prescription refills: Turnaround time\n\nText about refills.",
+        "Telehealth visits\n\nText about telehealth.",
+    ]
+    assert sent["top_k"] == 2
+    # Reranker order wins, and each passage keeps its own vector score next to its relevance
     assert [p.model_dump() for p in passages] == [
         {
             "rank": 1,
@@ -139,7 +201,8 @@ async def test_retrieve_embeds_the_question_as_a_query_and_ranks_from_one(fake_s
             "section": "Prescription refills",
             "heading": "Turnaround time",
             "content": "Text about refills.",
-            "similarity": 0.82,
+            "similarity": 0.31,
+            "relevance": 0.84,
         },
         {
             "rank": 2,
@@ -147,18 +210,35 @@ async def test_retrieve_embeds_the_question_as_a_query_and_ranks_from_one(fake_s
             "section": "Telehealth visits",
             "heading": None,
             "content": "Text about telehealth.",
-            "similarity": 0.41,
+            "similarity": 0.29,
+            "relevance": 0.55,
         },
     ]
 
 
 @respx.mock
-async def test_retrieve_asks_for_top_k_by_default(fake_supabase):
+async def test_retrieve_keeps_top_k_by_default(fake_supabase):
     respx.post(VOYAGE_URL).mock(return_value=voyage_response({0: [0.1]}))
-    match = respx.post(MATCH_URL).mock(return_value=httpx.Response(200, json=[]))
+    rows = [chunk_row(f"s{i}", f"Section {i}", None, 0.5) for i in range(6)]
+    respx.post(MATCH_URL).mock(return_value=httpx.Response(200, json=rows))
+    reranker = respx.post(VOYAGE_RERANK_URL).mock(
+        return_value=rerank_response({i: 0.9 - i / 10 for i in range(retrieval.TOP_K)})
+    )
+
+    passages = await retrieval.retrieve("anything")
+
+    assert json.loads(reranker.calls[0].request.content)["top_k"] == retrieval.TOP_K
+    assert [p.rank for p in passages] == list(range(1, retrieval.TOP_K + 1))
+
+
+@respx.mock
+async def test_retrieve_with_an_empty_corpus_skips_the_reranker(fake_supabase):
+    respx.post(VOYAGE_URL).mock(return_value=voyage_response({0: [0.1]}))
+    respx.post(MATCH_URL).mock(return_value=httpx.Response(200, json=[]))
+    reranker = respx.post(VOYAGE_RERANK_URL)
 
     assert await retrieval.retrieve("anything") == []
-    assert json.loads(match.calls[0].request.content)["match_count"] == retrieval.TOP_K
+    assert not reranker.called
 
 
 @respx.mock

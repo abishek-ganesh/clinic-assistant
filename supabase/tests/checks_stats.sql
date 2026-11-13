@@ -40,7 +40,7 @@ begin
   from generate_series(1, 5) n;
   insert into usage_log (surface, outcome, client_ip_hash, latency_ms, detail, created_at) values
     ('demo', 'declined', 'private-ip-hash', 9000, 'out_of_scope', v_noon),
-    ('demo', 'declined', 'private-ip-hash', 9000, 'low_similarity', v_noon),
+    ('demo', 'declined', 'private-ip-hash', 9000, 'low_relevance', v_noon),
     ('demo', 'emergency', 'private-ip-hash', 9000, 'emergency', v_noon),
     ('demo', 'denied', 'private-ip-hash', null, 'rate_limit_minute', v_noon),
     ('demo', 'error', 'private-ip-hash', 9000, null, v_noon);

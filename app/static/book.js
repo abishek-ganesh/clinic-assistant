@@ -59,8 +59,17 @@ const CODE_WRITTEN = Object.fromEntries(
   ["proposed", "booked", "not_booked", "refused", "step_limit"].map((outcome) => [outcome, "Written by code"]),
 );
 
+// What the waiting bubble says, by what was sent.
+const WAITING = {
+  message: "Checking the schedule",
+  confirm: "Checking your confirmation and booking",
+  decline: "Letting the assistant know",
+};
+
 const $ = (id) => document.getElementById(id);
 
+const emptyChat = $("chat-log").querySelector(".chat-empty").cloneNode(true);
+const emptyTrace = $("trace-log").querySelector(".chat-empty").cloneNode(true);
 const form = $("book-form");
 const messageBox = $("message");
 const chips = document.querySelectorAll(".chip");
@@ -118,6 +127,8 @@ function sendMessage(rawMessage) {
     return;
   }
   addBubble("user", message);
+  // The examples have done their job once the conversation starts; the visitor can reopen them
+  $("examples").open = false;
   messageBox.value = "";
   updateCharCount();
   autosize(messageBox);
@@ -128,7 +139,7 @@ function sendMessage(rawMessage) {
 async function send(payload) {
   if (isLoading || !payload) return;
   lastPayload = payload;
-  startLoading();
+  startLoading(payload.action);
 
   let response;
   let body = null;
@@ -177,9 +188,6 @@ function showTurn(data) {
   $("start-over").hidden = false;
 
   // Tell screen readers what happened. The reply itself is announced by the chat log.
-  const status = $("status");
-  status.classList.add("sr-only");
-  status.hidden = false;
   $("status-text").textContent = data.proposal
     ? "The agent suggested a time. Confirm and Decline buttons are at the end of the conversation."
     : data.booking
@@ -220,8 +228,10 @@ function addTraceTurn(data) {
   for (const step of data.steps) turn.append(toolCall(step));
 
   log.append(turn);
-  // Start of the newest turn, not the very bottom, so its first tool call is readable
-  log.scrollTop = turn.offsetTop - log.offsetTop - 12;
+  // Scroll the sidebar to the start of the newest turn, not the very bottom, so its first tool
+  // call is readable. The sidebar scrolls on its own; the page does not move.
+  const panel = $("hood-panel");
+  panel.scrollTop += turn.getBoundingClientRect().top - panel.getBoundingClientRect().top - 16;
 }
 
 // One tool call: its name, what code did with it, the arguments and the result.
@@ -294,30 +304,36 @@ function startOver() {
   turnCount = 0;
   lastPayload = null;
   showProposal(null);
-  $("chat-log").replaceChildren(el("li", "chat-empty", "Say what kind of visit you want and roughly when, or pick an example below."));
-  $("trace-log").replaceChildren(el("li", "chat-empty", "Each tool the model calls shows up here with its arguments and the result code sent back."));
+  $("chat-log").replaceChildren(emptyChat.cloneNode(true));
+  $("trace-log").replaceChildren(emptyTrace.cloneNode(true));
+  $("examples").open = true;
   $("error").hidden = true;
   $("prompt").hidden = true;
-  $("status").hidden = true;
+  $("status-text").textContent = "";
   $("start-over").hidden = true;
   $("meta").textContent = "";
   messageBox.focus();
 }
 
-// Loading: the page cannot see which tool the server is running, so it shows elapsed time only.
-function startLoading() {
+// Loading: a waiting bubble in the conversation. The page cannot see which tool the server is
+// running, so it shows what was sent and the elapsed time only.
+function startLoading(action) {
   isLoading = true;
   setControlsDisabled(true);
   $("error").hidden = true;
+  $("status-text").textContent = "The assistant is working.";
 
-  const status = $("status");
-  status.classList.remove("sr-only");
-  status.hidden = false;
+  const waiting = el("li", "bubble bubble-agent bubble-waiting");
+  waiting.id = "waiting";
+  waiting.setAttribute("aria-hidden", "true");
+  const time = el("span", "loading-time");
+  waiting.append(el("span", "spinner spinner-small"), el("span", "", WAITING[action] ?? WAITING.message), time);
+  const log = $("chat-log");
+  log.append(waiting);
+  log.scrollTop = log.scrollHeight;
+
   const started = performance.now();
-  const tick = () => {
-    const seconds = ((performance.now() - started) / 1000).toFixed(1);
-    $("status-text").textContent = `The agent is working: calling the model and running its tools. ${seconds} s`;
-  };
+  const tick = () => { time.textContent = `${((performance.now() - started) / 1000).toFixed(1)} s`; };
   tick();
   timer = setInterval(tick, 100);
 }
@@ -326,7 +342,7 @@ function stopLoading() {
   isLoading = false;
   clearInterval(timer);
   setControlsDisabled(false);
-  $("status").hidden = true;
+  $("waiting")?.remove();
 }
 
 // aria-disabled (not disabled) so a button keeps keyboard focus while its turn runs.

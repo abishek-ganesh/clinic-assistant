@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.chunking import Chunk, chunk_markdown, estimate_tokens
+from app.chunking import Chunk, chunk_markdown, estimate_tokens, titled_text
 from app.thresholds import CHUNK_MAX_TOKENS
 
 HANDBOOK = Path(__file__).parent.parent / "handbook"
@@ -113,3 +113,11 @@ def test_every_handbook_file_chunks_cleanly(path):
         assert chunk.content
         assert chunk.token_count <= CHUNK_MAX_TOKENS
         assert "fictional" not in chunk.content.lower()
+
+
+def test_titled_text_puts_section_and_heading_on_top():
+    assert (
+        titled_text("Refills", "Turnaround", "Up to 3 days.")
+        == "Refills: Turnaround\n\nUp to 3 days."
+    )
+    assert titled_text("Refills", None, "How refills work.") == "Refills\n\nHow refills work."

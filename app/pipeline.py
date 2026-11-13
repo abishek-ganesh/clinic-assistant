@@ -8,7 +8,7 @@ from app.generate import generate
 from app.judge import judge
 from app.models import Judgments, Passage
 from app.retrieval import check_corpus_model, retrieve
-from app.thresholds import EMERGENCY_MIN, IN_SCOPE_MIN, SIMILARITY_MIN
+from app.thresholds import EMERGENCY_MIN, IN_SCOPE_MIN, RELEVANCE_MIN
 
 # Written by code, never by a model, so they are the same every time.
 EMERGENCY_MESSAGE = (
@@ -39,8 +39,8 @@ def gate(judgments: Judgments, passages: list[Passage]) -> str | None:
         return "emergency"
     if judgments.in_scope < IN_SCOPE_MIN:
         return "out_of_scope"
-    if not passages or passages[0].similarity < SIMILARITY_MIN:
-        return "low_similarity"
+    if not passages or passages[0].relevance < RELEVANCE_MIN:
+        return "low_relevance"
     return None
 
 
@@ -91,7 +91,7 @@ async def ask(question: str) -> AskResult:
         "thresholds": {
             "emergency_min": EMERGENCY_MIN,
             "in_scope_min": IN_SCOPE_MIN,
-            "similarity_min": SIMILARITY_MIN,
+            "relevance_min": RELEVANCE_MIN,
         },
         "decision": decision,
         "decision_reason": reason,

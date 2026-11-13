@@ -1,6 +1,6 @@
 /* Family Clinic Assistant: shared styles for every page.
    Order: tokens, base, header, page layout, buttons and chips, cards, search box,
-   disclosures, the dark inspector panel, states, footer, small screens.
+   disclosures, the dark inspector panel, states, small screens.
    Page files (ask.css, book.css, stats.css, token.css) add only what is unique to them. */
 
 :root {
@@ -215,16 +215,96 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-7); }
 }
 .page-head p { margin-top: var(--space-2); color: var(--slate); font-size: 1.0625rem; }
 
-/* Two panels side by side: what the person sees, and what happened under the hood.
-   Wraps to one column when there is not room for both. */
+/* What the person sees, and the "Under the hood" sidebar (hood.js sets data-hood on <html>).
+   Wide screens: a sticky column beside the page that can be hidden, and the page centers.
+   Narrow screens: a sheet that slides over the page from the right. */
 .split {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
   gap: var(--space-5);
 }
-.split-main { flex: 999 1 35rem; min-width: 0; display: flex; flex-direction: column; gap: var(--space-5); }
-.split-side { flex: 1 1 25rem; min-width: 0; }
+.split-main { min-width: 0; display: flex; flex-direction: column; gap: var(--space-5); }
+.split-side { min-width: 0; }
+
+@media (min-width: 60rem) {
+  :root[data-hood="open"] .split { grid-template-columns: minmax(0, 1fr) 26rem; }
+  :root[data-hood="closed"] .split { max-width: 56rem; }
+  :root[data-hood="closed"] .split-side { display: none; }
+  .split-side {
+    position: sticky;
+    top: var(--space-5);
+    max-height: calc(100dvh - 2 * var(--space-5));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .hood-backdrop { display: none; }
+}
+
+@media (max-width: 59.99rem) {
+  .split-side {
+    position: fixed;
+    z-index: 20;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(26rem, 100%);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: var(--radius-large) 0 0 var(--radius-large);
+    box-shadow: -12px 0 40px rgb(0 26 77 / 0.25);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 0.25s ease, visibility 0s 0.25s;
+  }
+  :root[data-hood="open"] .split-side { transform: none; visibility: visible; transition: transform 0.25s ease; }
+
+  .hood-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 19;
+    background: rgb(0 26 77 / 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  :root[data-hood="open"] .hood-backdrop { opacity: 1; pointer-events: auto; }
+}
+
+/* The header button that shows and hides the sidebar */
+.hood-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--navy);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hood-toggle:hover { border-color: var(--navy); }
+.hood-toggle[aria-expanded="true"] { background: var(--navy-deep); border-color: var(--navy-deep); color: var(--white); }
+
+/* The Hide button inside the sidebar */
+.hood-close {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: 999px;
+  background: var(--ins-surface);
+  color: var(--ins-fg);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.hood-close:hover { background: rgb(255 255 255 / 0.14); }
 
 /* Buttons and chips */
 
@@ -271,6 +351,45 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-7); }
   cursor: pointer;
 }
 .chip:hover { border-color: var(--navy); color: var(--navy); }
+
+/* Example prompts: a "Try an example" disclosure over an even two-column grid.
+   Open at first, closed by the page once the first message is sent. */
+.examples summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--slate);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+.examples summary::-webkit-details-marker { display: none; }
+.examples summary::after {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-top: -0.2rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+.examples[open] summary::after { margin-top: 0.15rem; transform: rotate(-135deg); }
+.examples summary:hover { color: var(--navy); }
+
+.chips-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.chips-grid .chip {
+  min-height: 3rem;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-small);
+  line-height: 1.4;
+}
 
 [aria-disabled="true"] { opacity: 0.55; cursor: progress; }
 
@@ -374,14 +493,17 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-7); }
 .inspector :focus-visible { outline-color: var(--columbia); }
 .inspector a { color: var(--columbia); }
 
+/* Title and Hide button on one line; the meta line or legend under them */
 .inspector-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
 }
 .inspector-head h2 { color: var(--white); font-size: 1.125rem; }
+.inspector-head > :not(h2, .hood-close) { flex-basis: 100%; }
+.ins-meta:empty { display: none; }
 
 .inspector .eyebrow, .ins-label { color: var(--ins-label); }
 .ins-muted { color: var(--ins-muted); }
@@ -398,6 +520,9 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-7); }
   font-size: 0.875rem;
   line-height: 1.55;
 }
+
+.ins-waiting { display: flex; align-items: center; gap: var(--space-3); color: var(--ins-muted); font-size: 0.875rem; }
+.inspector .spinner { border-color: var(--ins-track); border-top-color: var(--columbia); }
 
 .inspector .prompt summary { color: var(--columbia); }
 .inspector .prompt pre, .inspector .code { background: rgb(0 0 0 / 0.28); }
@@ -444,6 +569,33 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-7); }
   to { background-position: -66% 0; }
 }
 
+/* Waiting on the server: a spinner, what is happening, and the seconds so far */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+.loading .spinner { margin-bottom: var(--space-2); }
+.loading-time { color: var(--slate); font-family: var(--font-mono); font-size: 0.75rem; font-weight: 400; }
+
+.spinner {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 3px solid var(--line);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.spinner-small { width: 1.125rem; height: 1.125rem; border-width: 2px; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .error {
   padding: var(--space-4) var(--space-5);
   background: var(--alarm-tint);
@@ -476,14 +628,6 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-7); }
   color: var(--slate);
 }
 
-.site-footer {
-  padding: var(--space-5) 0 var(--space-6);
-  border-top: 1px solid var(--line-soft);
-  color: var(--slate);
-  font-size: 0.8125rem;
-  text-align: center;
-}
-
 /* Small screens */
 
 @media (max-width: 40rem) {
@@ -497,9 +641,18 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-7); }
   .search { padding-left: var(--space-4); }
   .search .ask-button { padding: 0 var(--space-4); }
   .chip { font-size: 0.875rem; }
+  /* The sidebar button sits beside the brand as an icon; its label stays for screen readers */
+  .brand { flex: 1 1 auto; }
+  .hood-toggle { order: 1; width: 2.5rem; height: 2.5rem; padding: 0; justify-content: center; }
+  .hood-toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .tabs { order: 2; flex-basis: 100%; }
+  .chips-grid { grid-template-columns: minmax(0, 1fr); }
+  .chips-grid .chip { min-height: 2.75rem; }
+  .split-side { border-radius: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .status-bar { animation: none; }
-  .bar-fill, .prompt summary::before { transition: none; }
+  .spinner { animation-duration: 2.4s; }
+  .bar-fill, .prompt summary::before, .examples summary::after, .split-side, .hood-backdrop { transition: none; }
 }

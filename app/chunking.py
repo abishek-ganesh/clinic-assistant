@@ -23,6 +23,12 @@ class Chunk:
     token_count: int
 
 
+def titled_text(section_title: str, heading: str | None, content: str) -> str:
+    """A passage with its titles on top, so a short passage keeps its topic. Embedded, reranked."""
+    titles = [section_title] + ([heading] if heading else [])
+    return f"{': '.join(titles)}\n\n{content}"
+
+
 def estimate_tokens(text: str) -> int:
     """Approximate tokens without a tokenizer: English prose runs about 4 characters a token."""
     return math.ceil(len(text) / 4)

@@ -6,15 +6,16 @@
 
 A patient asks the fictional Family Clinic a question. The app finds the handbook passages that answer it, checks whether it should answer at all, and then has a model write a short answer that cites those passages. Every step is visible on the demo page, because the point is to make RAG something students can see.
 
-Three kinds of models, each with one job:
+Four kinds of models, each with one job:
 
 | Kind | Job | Model | Analogy |
 |---|---|---|---|
 | Embedding | represents text as vectors so similar meanings sit close together | Voyage `voyage-4-lite` | the librarian's card catalog |
+| Reranker | reads the question beside each candidate passage and scores how well it answers it | Voyage `rerank-2.5-lite` | the librarian who reads the pulled books before handing them over |
 | Judgment | answers a typed question with a calibrated probability | TypeSafe Jev | the triage nurse |
 | Generative | writes the answer from the passages it is handed | Claude Haiku 5.5 | the doctor who explains |
 
-**Code owns every threshold and every side effect.** Jev never writes text. Haiku never decides whether to answer. The embedding model only measures similarity.
+**Code owns every threshold and every side effect.** Jev never writes text. Haiku never decides whether to answer. The embedding model and the reranker only score passages.
 
 The thin slices add three things on top of that pipeline, one per later stage of the course. Each has its own section below:
 
@@ -40,7 +41,8 @@ Browser                          Student notebook             MCP client
      +-----------------+---------------+--+-------------------+
      v                 v                  v                   v
   Voyage AI       TypeSafe Jev      Anthropic API        Supabase
-  embeddings      judgments         Claude Haiku 5.5     Postgres + pgvector, over HTTPS
+  embeddings,     judgments         Claude Haiku 5.5     Postgres + pgvector, over HTTPS
+  reranking
 ```
 
 Which route uses which provider:
@@ -61,11 +63,12 @@ GitHub Actions sits beside all of this: on every push to `main` it runs the answ
 ```
 question
   +--> (in parallel) Jev: is_emergency p, in_scope p
-  +--> (in parallel) embed the question -> match_chunks() -> top 4 passages
+  +--> (in parallel) embed the question -> match_chunks() -> 10 candidates
+  |                   -> reranker scores each against the question -> top 4 passages
   |
   gate (code):
     emergency p >= 0.35                          -> fixed "call 911" response, no generation
-    in_scope p < 0.25 or best similarity < 0.45  -> "I can't find that in the handbook"
+    in_scope p < 0.25 or best relevance < 0.47   -> "I can't find that in the handbook"
     otherwise                                    -> generate
   |
   Haiku: structured output {answer, citations, answerable}
@@ -81,8 +84,8 @@ Each module has one job and a small surface. The data shapes are in `app/models.
 
 | Module | Surface | Notes |
 |---|---|---|
-| `app/retrieval.py` | `embed(texts, input_type) -> list[list[float]]`, `retrieve(question, k=TOP_K) -> list[Passage]`, `check_corpus_model() -> None` | `check_corpus_model` raises if any stored chunk was embedded by a different model than the one configured; the pipeline runs it once per warm instance |
-| `app/chunking.py` | `chunk_markdown(text, slug) -> list[Chunk]` | pure function: split on headings, cap at `CHUNK_MAX_TOKENS`, one-sentence overlap |
+| `app/retrieval.py` | `embed(texts, input_type) -> list[list[float]]`, `rerank(query, documents, top_k) -> list[(index, relevance)]`, `retrieve(question, k=TOP_K) -> list[Passage]`, `check_corpus_model() -> None` | `retrieve` takes `RERANK_CANDIDATES` from vector search and keeps the reranker's top `k`. `check_corpus_model` raises if any stored chunk was embedded by a different model than the one configured; the pipeline runs it once per warm instance |
+| `app/chunking.py` | `chunk_markdown(text, slug) -> list[Chunk]`, `titled_text(section_title, heading, content) -> str` | pure function: split on headings, cap at `CHUNK_MAX_TOKENS`, one-sentence overlap |
 | `app/judge.py` | `judge(question) -> Judgments` | Jev over HTTP; Ollama fallback in development, labeled `calibrated=False` |
 | `app/generate.py` | `build_prompt(question, passages) -> Prompt`, `generate(question, passages) -> Generation`, `chat(request) -> ChatResult`, `chat_stream(request)` yielding text deltas then one `ChatResult`, `get_client()` | owns the one Anthropic client (and the Ollama fallback for generation). `app/agent.py` is the only other module that calls Anthropic, and it does so through `get_client()` |
 | `app/openai_compat.py` | `translate_request(body) -> ChatRequest` (raises `UnsupportedRequest`), `completion_body(...)`, `Stream` + `stream_chunk(...)`, `error_body(...)`, `models_body()` | pure functions, no network: OpenAI shapes in, Anthropic arguments out, and back |
@@ -103,11 +106,12 @@ Request: `{"question": "..."}` (1 to 500 characters). Response, always 200 when 
 ```json
 { "question": "How long do refills take?",
   "judgments": { "is_emergency": 0.03, "in_scope": 0.91, "provider": "jev", "calibrated": true },
-  "thresholds": { "emergency_min": 0.35, "in_scope_min": 0.25, "similarity_min": 0.45 },
+  "thresholds": { "emergency_min": 0.35, "in_scope_min": 0.25, "relevance_min": 0.47 },
   "decision": "answered",
   "decision_reason": null,
   "passages": [ { "rank": 1, "section_slug": "refills", "section": "Prescription refills",
-                  "heading": "Turnaround", "content": "...", "similarity": 0.82 } ],
+                  "heading": "Turnaround", "content": "...", "similarity": 0.57,
+                  "relevance": 0.83 } ],
   "answer": { "text": "Refills take up to three business days [1].", "citations": [1] },
   "prompt": { "system": "...", "user": "..." },
   "model": "claude-haiku-5-5",
@@ -116,8 +120,8 @@ Request: `{"question": "..."}` (1 to 500 characters). Response, always 200 when 
 
 - `decision` is `answered`, `declined` or `emergency`.
 - `thresholds` are the numbers the gate compared against, so the page draws its lines from the server's values instead of keeping its own copy.
-- `decision_reason` is `null` when answered, otherwise `emergency`, `out_of_scope` (judgment below threshold), `low_similarity` (nothing relevant retrieved), `not_in_handbook` (the generator said the passages don't answer it) or `refusal` (the generator declined).
-- `passages` is empty for `emergency` and present otherwise, so a decline still shows what retrieval found.
+- `decision_reason` is `null` when answered, otherwise `emergency`, `out_of_scope` (judgment below threshold), `low_relevance` (the reranker scored even the best passage under the floor), `not_in_handbook` (the generator said the passages don't answer it) or `refusal` (the generator declined).
+- `passages` is empty for `emergency` and present otherwise, so a decline still shows what retrieval found. They are in the reranker's order. `relevance` (0 to 1) is the reranker's score and the one the gate checks; `similarity` is the vector search score, kept so the page can show what the reranker changed.
 - `prompt` and `model` are `null` when nothing was generated. `answer.text` is always present: the generated answer or a fixed message written by code.
 - Errors use `{"error": {"code": "...", "message": "..."}}`: 422 `invalid_question`, 429 `rate_limited` or `spend_cap`, 503 `kill_switch`, 502 `upstream_error`.
 
@@ -135,7 +139,9 @@ The handbook is eight Markdown files in `handbook/`, one per topic. `scripts/ing
 2. **Embed.** Each chunk is embedded together with its section title and heading, so a short passage still carries its topic. Only the passage text is stored and shown.
 3. **Store.** Rows go into `handbook_chunks` with the name of the embedding model. Ingest inserts the new rows before deleting the old ones, so search never sees an empty table.
 
-`scripts/eval_retrieval.py` checks the result: for every question in `eval/questions.jsonl` the expected section must rank first. It also prints the best similarity for questions that have no answer in the handbook, which is how the similarity threshold was chosen (see DECISIONS D26).
+A question is searched in two steps. **Vector search** embeds the question and asks Postgres for the 10 nearest chunks (`RERANK_CANDIDATES`). It is fast and cheap but only compares two vectors made separately, so a terse question like "refill time" lands far from the passage that answers it. **The reranker** then reads the question next to each of those 10 passages (with the same titles on top that were embedded) and scores how well each one answers it, from 0 to 1. The best 4 (`TOP_K`) go on, in the reranker's order. Think of a librarian who pulls ten likely books by their catalog cards, then skims each before handing you four. The reranker adds about 100 ms to the retrieval branch, which runs alongside the judgment call.
+
+`scripts/eval_retrieval.py` checks the result: for every answerable question in `eval/questions.jsonl` the expected section must rank first and score over the relevance floor. It prints both scores for the top passage, and the ranges for full-sentence, terse, out-of-scope and emergency questions, which is how the floor was chosen (see DECISIONS D68, which replaced the similarity floor of D26).
 
 ## The booking agent
 
@@ -264,12 +270,12 @@ The Model Context Protocol (MCP) is a standard way for an AI application to disc
 
 | Tool | Calls | Returns |
 |---|---|---|
-| `search_handbook(question)` | `app.retrieval.retrieve` | passages, best first: `section`, `heading`, `content`, `similarity` |
+| `search_handbook(question)` | `app.retrieval.retrieve` | passages, best first: `section`, `heading`, `content`, `relevance`, `similarity` |
 | `check_availability(visit_type?, on_or_after?)` | `app.schedule.check_availability` | open slots, soonest first: `slot_id`, `provider`, `visit_type`, `starts_at`, `display` |
 
 Both only read. There is no booking tool: booking is a side effect, a side effect needs a person to confirm it, and this server has no way to ask.
 
-Notice which half of RAG is exposed. The server retrieves; the model in the client writes the answer. The judgment gate and the generator from the Ask pipeline are not involved, so an MCP call costs no model tokens on our side (only a Voyage embedding for `search_handbook`).
+Notice which half of RAG is exposed. The server retrieves; the model in the client writes the answer. The judgment gate and the generator from the Ask pipeline are not involved, so an MCP call costs no model tokens on our side (only a Voyage embedding and a rerank for `search_handbook`).
 
 `check_availability` passes `visit_type` straight to the schedule, which matches `returning`, `physical` or `telehealth` exactly. Any other text returns an empty list.
 
@@ -293,7 +299,7 @@ metered("search_handbook", request, work)
    |-- client_ip(request) -> authorize_demo(ip)
    |       denied          -> usage_log row (outcome "denied")  -> ToolError(denial message)
    |       check errors    -> no row, call refused              -> ToolError(fixed message)
-   |-- work(): retrieve(question) -> Voyage embedding -> match_chunks() in Postgres
+   |-- work(): retrieve(question) -> Voyage embedding -> match_chunks() in Postgres -> Voyage rerank
    |       raises          -> usage_log row (outcome "error")   -> ToolError(fixed message)
    |-- usage_log row (surface "mcp", outcome "tool_call", detail = tool name, latency_ms)
    v
@@ -428,7 +434,7 @@ Step 2   the student opens the link and presses "Show my token"
 | Thresholds | `app/thresholds.py` | Every number the code decides with, one comment each |
 | Data shapes | `app/models.py` | What passes between modules |
 | Database client | `app/db.py` | One Supabase client per warm serverless instance |
-| Embeddings + search | `app/retrieval.py`, `app/chunking.py` | Voyage over HTTP with retries; vector search in Postgres; the chunker |
+| Embeddings + search | `app/retrieval.py`, `app/chunking.py` | Voyage embeddings and reranking over HTTP with retries; vector search in Postgres; the chunker |
 | Judgments | `app/judge.py` | Two questions to Jev in one request, with retries |
 | Generation | `app/generate.py` | The grounded answer with structured output; plain chat for the class endpoint; the shared Anthropic client |
 | OpenAI compatibility | `app/openai_compat.py` | Translation between OpenAI's shapes and Anthropic's |
@@ -437,7 +443,7 @@ Step 2   the student opens the link and presses "Show my token"
 | Booking agent | `app/agent.py`, `app/booking_routes.py` | The tool loop with the signed confirmation; `/book` and `/api/book` |
 | MCP server | `app/mcp_server.py` | Two read-only tools at `/mcp`, stateless |
 | Usage stats | `app/stats.py`, `app/stats_routes.py` | `/stats` and `/api/stats`: aggregates from one Postgres function |
-| Pages | `app/static/` | Plain HTML, CSS and JavaScript: Ask (`index.html`), Book (`book.html`), Stats (`stats.html`), API token (`token.html`). They share `styles.css` (header, buttons, cards, the search box and the dark "Under the hood" panel); each page adds its own `.css` and `.js` |
+| Pages | `app/static/` | Plain HTML, CSS and JavaScript: Ask (`index.html`), Book (`book.html`), Stats (`stats.html`), API token (`token.html`). They share `styles.css` (header, buttons, cards, the search box and the dark "Under the hood" sidebar); `hood.js` shows and hides that sidebar on Ask and Book; each page adds its own `.css` and `.js` |
 | Schema | `supabase/migrations/` | Tables, indexes, the functions below, row-level security |
 | Scripts | `scripts/` | `ingest.py`, `eval_retrieval.py`, `eval_answers.py`, `tokens.py`, `student_smoke.py`, `access_checks.py`, `check_migrations.sh` |
 | CI | `.github/workflows/ci.yml` | Lint and unit tests on every push and pull request; the answer eval on pushes to `main` |
@@ -507,7 +513,7 @@ All data is synthetic. The clinic is fictional and no real patient information e
 |---|---|---|
 | Anthropic | the question and retrieved handbook passages; class endpoint messages; booking conversations and the tool results in them | answer generation, class completions, the booking agent |
 | TypeSafe | the question text | emergency and scope judgments |
-| Voyage AI | the question text (from the Ask page and from MCP `search_handbook` calls) and handbook passages | embeddings |
+| Voyage AI | the question text (from the Ask page and from MCP `search_handbook` calls) and handbook passages | embeddings and reranking |
 | Resend | the email address of a student requesting a token, and the one-time link | delivering the token link |
 | Supabase | everything stored in the tables above | database |
 | Vercel | request traffic | hosting |

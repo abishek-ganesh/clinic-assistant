@@ -59,6 +59,7 @@
         <li>The endpoint speaks OpenAI's chat completions format, so the <code>openai</code> package works unchanged. You set the address and your token.</li>
         <li>Each token gets 20 requests a minute and 300 a day. The whole class shares one monthly budget, so a loop that runs away hurts everyone.</li>
         <li>Never put the token in code you commit. If it leaks, request a new one here: the old one stops working when you open the new link.</li>
+        <li>Tokens are for coursework only and can be turned off at any time. Only a hash of each token is stored, so a lost token cannot be shown again. Your email is used only to deliver the link and to label the token.</li>
       </ul>
     </details>
 
@@ -157,9 +158,5 @@
       <p class="use-note">Install the package with <code>pip install openai</code>. Settings such as <code>temperature</code> are accepted and ignored, and the response tells you which ones.</p>
     </section>
   </main>
-
-  <footer class="site-footer">
-    <p class="wrap">Tokens are for coursework only and can be turned off at any time. Only a hash of each token is stored, so a lost token cannot be shown again. Emails are used only to deliver the link and to label the token.</p>
-  </footer>
 </body>
 </html>

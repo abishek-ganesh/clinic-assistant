@@ -20,6 +20,7 @@ PASSAGES = [
         heading="Turnaround",
         content="Refills take up to three business days.",
         similarity=0.82,
+        relevance=0.9,
     ),
     Passage(
         rank=2,
@@ -28,6 +29,7 @@ PASSAGES = [
         heading=None,
         content="The clinic is open Monday to Friday, 8 am to 6 pm.",
         similarity=0.41,
+        relevance=0.6,
     ),
 ]
 

@@ -9,14 +9,15 @@ def judgments(is_emergency=0.02, in_scope=0.9) -> Judgments:
     return Judgments(is_emergency=is_emergency, in_scope=in_scope, provider="jev", calibrated=True)
 
 
-def passage(similarity=0.6, rank=1) -> Passage:
+def passage(relevance=0.8, rank=1) -> Passage:
     return Passage(
         rank=rank,
         section_slug="refills",
         section="Prescription refills",
         heading="Turnaround time",
         content="Refills take up to three business days.",
-        similarity=similarity,
+        similarity=0.5,
+        relevance=relevance,
     )
 
 
@@ -35,24 +36,30 @@ def generation(**overrides) -> Generation:
 
 
 @pytest.mark.parametrize(
-    ("is_emergency", "in_scope", "similarity", "expected"),
+    ("is_emergency", "in_scope", "relevance", "expected"),
     [
-        (0.02, 0.90, 0.60, None),
-        (0.35, 0.90, 0.60, "emergency"),  # at the threshold counts
-        (0.34, 0.90, 0.60, None),
+        (0.02, 0.90, 0.80, None),
+        (0.35, 0.90, 0.80, "emergency"),  # at the threshold counts
+        (0.34, 0.90, 0.80, None),
         (0.90, 0.05, 0.10, "emergency"),  # emergency wins over every other reason
-        (0.02, 0.24, 0.60, "out_of_scope"),
-        (0.02, 0.25, 0.60, None),
-        (0.02, 0.90, 0.44, "low_similarity"),
-        (0.02, 0.90, 0.45, None),
+        (0.02, 0.24, 0.80, "out_of_scope"),
+        (0.02, 0.25, 0.80, None),
+        (0.02, 0.90, 0.46, "low_relevance"),
+        (0.02, 0.90, 0.47, None),
     ],
 )
-def test_gate_compares_each_number_to_its_threshold(is_emergency, in_scope, similarity, expected):
-    assert gate(judgments(is_emergency, in_scope), [passage(similarity)]) == expected
+def test_gate_compares_each_number_to_its_threshold(is_emergency, in_scope, relevance, expected):
+    assert gate(judgments(is_emergency, in_scope), [passage(relevance)]) == expected
+
+
+def test_gate_reads_relevance_not_similarity():
+    # A terse question: low vector similarity, but the reranker says the passage answers it
+    terse = passage(relevance=0.7).model_copy(update={"similarity": 0.2})
+    assert gate(judgments(), [terse]) is None
 
 
 def test_gate_declines_when_nothing_was_retrieved():
-    assert gate(judgments(), []) == "low_similarity"
+    assert gate(judgments(), []) == "low_relevance"
 
 
 @pytest.fixture
@@ -94,6 +101,12 @@ async def test_answered_carries_every_stage(stub):
         "citations": [1],
     }
     assert body["passages"][0]["section"] == "Prescription refills"
+    assert body["passages"][0]["relevance"] == 0.8
+    assert body["thresholds"] == {
+        "emergency_min": 0.35,
+        "in_scope_min": 0.25,
+        "relevance_min": 0.47,
+    }
     assert body["prompt"] == {"system": "s", "user": "u"}
     assert body["model"] == "claude-haiku-5-5"
     assert (result.input_tokens, result.output_tokens) == (700, 50)

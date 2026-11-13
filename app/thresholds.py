@@ -7,12 +7,16 @@ EMERGENCY_MIN = 0.35
 # Decline when the judgment model is this sure the question is outside the handbook's scope.
 IN_SCOPE_MIN = 0.25
 
-# Decline when even the best passage is this dissimilar: nothing relevant was retrieved.
-# Measured with scripts/eval_retrieval.py: answerable questions score 0.52 to 0.69 on their
-# best passage, out-of-scope and emergency questions 0.14 to 0.37. 0.45 sits in the gap.
-SIMILARITY_MIN = 0.45
+# Decline when the reranker scores even the best passage this low: nothing relevant was found.
+# Measured with scripts/eval_retrieval.py (DECISIONS D68): answerable questions score 0.73 to
+# 0.94 as full sentences and 0.49 to 0.90 when terse ("where are you?" is the lowest).
+# Out-of-scope questions score 0.31 to 0.51, so there is no clean gap. 0.47 keeps every
+# answerable question and declines 9 of 11 out-of-scope ones; the two above it ("dentist?",
+# "dermatologist near me") are left to the scope judgment and the generator.
+RELEVANCE_MIN = 0.47
 
-# Passages handed to the generator.
+# Passages vector search hands the reranker, and passages the reranker hands the generator.
+RERANK_CANDIDATES = 10
 TOP_K = 4
 
 # Longest question the demo page accepts, in characters.

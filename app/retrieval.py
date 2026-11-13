@@ -1,16 +1,18 @@
-"""Embeddings (Voyage AI over plain HTTP) and vector search (pgvector via a Postgres function)."""
+"""Embeddings and reranking (Voyage AI over plain HTTP) and vector search (pgvector)."""
 
 import asyncio
 from typing import Literal
 
 import httpx
 
+from app.chunking import titled_text
 from app.config import get_settings
 from app.db import get_db
 from app.models import Passage
-from app.thresholds import TOP_K
+from app.thresholds import RERANK_CANDIDATES, TOP_K
 
 VOYAGE_URL = "https://api.voyageai.com/v1/embeddings"
+VOYAGE_RERANK_URL = "https://api.voyageai.com/v1/rerank"
 MAX_ATTEMPTS = 3
 
 InputType = Literal["query", "document"]
@@ -25,6 +27,37 @@ def _retry_delay(response: httpx.Response | None, attempt: int) -> float:
     return 0.5 * 3**attempt
 
 
+async def _post_voyage(url: str, payload: dict, client: httpx.AsyncClient | None) -> dict:
+    """POST to a Voyage endpoint with retries on 429, 5xx and dropped connections."""
+    settings = get_settings()
+    if not settings.voyage_api_key:
+        raise RuntimeError("VOYAGE_API_KEY is not set")
+    headers = {"Authorization": f"Bearer {settings.voyage_api_key}"}
+
+    owns_client = client is None
+    client = client or httpx.AsyncClient(timeout=30)
+    try:
+        for attempt in range(MAX_ATTEMPTS):
+            response = None
+            try:
+                response = await client.post(url, json=payload, headers=headers)
+            except httpx.TransportError:
+                if attempt == MAX_ATTEMPTS - 1:
+                    raise
+            else:
+                # 429 and 5xx are worth retrying; any other error is our bug, so fail fast
+                if response.status_code != 429 and response.status_code < 500:
+                    response.raise_for_status()
+                    return response.json()
+                if attempt == MAX_ATTEMPTS - 1:
+                    response.raise_for_status()
+            await asyncio.sleep(_retry_delay(response, attempt))
+        raise RuntimeError("unreachable")
+    finally:
+        if owns_client:
+            await client.aclose()
+
+
 async def embed(
     texts: list[str],
     input_type: InputType,
@@ -34,40 +67,39 @@ async def embed(
     if not texts:
         return []
     settings = get_settings()
-    if not settings.voyage_api_key:
-        raise RuntimeError("VOYAGE_API_KEY is not set")
-
     payload = {
         "input": texts,
         "model": settings.embedding_model,
         "input_type": input_type,
         "output_dimension": settings.embedding_dimensions,
     }
-    headers = {"Authorization": f"Bearer {settings.voyage_api_key}"}
+    body = await _post_voyage(VOYAGE_URL, payload, client)
+    data = sorted(body["data"], key=lambda item: item["index"])
+    return [item["embedding"] for item in data]
 
-    owns_client = client is None
-    client = client or httpx.AsyncClient(timeout=30)
-    try:
-        for attempt in range(MAX_ATTEMPTS):
-            response = None
-            try:
-                response = await client.post(VOYAGE_URL, json=payload, headers=headers)
-            except httpx.TransportError:
-                if attempt == MAX_ATTEMPTS - 1:
-                    raise
-            else:
-                # 429 and 5xx are worth retrying; any other error is our bug, so fail fast
-                if response.status_code != 429 and response.status_code < 500:
-                    response.raise_for_status()
-                    data = sorted(response.json()["data"], key=lambda item: item["index"])
-                    return [item["embedding"] for item in data]
-                if attempt == MAX_ATTEMPTS - 1:
-                    response.raise_for_status()
-            await asyncio.sleep(_retry_delay(response, attempt))
-        raise RuntimeError("unreachable")
-    finally:
-        if owns_client:
-            await client.aclose()
+
+async def rerank(
+    query: str,
+    documents: list[str],
+    top_k: int,
+    client: httpx.AsyncClient | None = None,
+) -> list[tuple[int, float]]:
+    """Score each document against the query with Voyage's reranker, which reads both together.
+
+    Returns (index into documents, relevance from 0 to 1) for the top_k, most relevant first.
+    """
+    if not documents:
+        return []
+    settings = get_settings()
+    payload = {
+        "query": query,
+        "documents": documents,
+        "model": settings.rerank_model,
+        "top_k": top_k,
+    }
+    body = await _post_voyage(VOYAGE_RERANK_URL, payload, client)
+    data = sorted(body["data"], key=lambda item: item["relevance_score"], reverse=True)
+    return [(item["index"], item["relevance_score"]) for item in data[:top_k]]
 
 
 async def match_chunks(query_embedding: list[float], match_count: int = 4) -> list[dict]:
@@ -80,19 +112,26 @@ async def match_chunks(query_embedding: list[float], match_count: int = 4) -> li
 
 
 async def retrieve(question: str, k: int = TOP_K) -> list[Passage]:
-    """The k handbook passages closest in meaning to the question, best first."""
+    """The k most relevant handbook passages, best first.
+
+    Two steps: vector search casts a wide net (RERANK_CANDIDATES passages, fast and cheap), then
+    the reranker reads the question next to each candidate and picks the best k from those.
+    """
     [query_embedding] = await embed([question], "query")
-    rows = await match_chunks(query_embedding, k)
+    rows = await match_chunks(query_embedding, max(k, RERANK_CANDIDATES))
+    documents = [titled_text(row["section_title"], row["heading"], row["content"]) for row in rows]
+    ranked = await rerank(question, documents, k)
     return [
         Passage(
             rank=rank,
-            section_slug=row["section_slug"],
-            section=row["section_title"],
-            heading=row["heading"],
-            content=row["content"],
-            similarity=row["similarity"],
+            section_slug=rows[index]["section_slug"],
+            section=rows[index]["section_title"],
+            heading=rows[index]["heading"],
+            content=rows[index]["content"],
+            similarity=rows[index]["similarity"],
+            relevance=relevance,
         )
-        for rank, row in enumerate(rows, start=1)
+        for rank, (index, relevance) in enumerate(ranked, start=1)
     ]
 
 

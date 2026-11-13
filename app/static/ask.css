@@ -168,7 +168,7 @@
 .decision[data-decision="declined"] .decision-word { background: #5d6b82; }
 .decision[data-decision="emergency"] .decision-word { background: var(--alarm); }
 
-/* Passages: one row per passage with its similarity bar against the floor; opens to the text */
+/* Passages: one row per passage with its relevance bar against the floor; opens to the text */
 
 .passages { display: flex; flex-direction: column; gap: var(--space-2); }
 
@@ -230,7 +230,6 @@
 @media (max-width: 40rem) {
   .ask-hero { padding: var(--space-5) var(--space-4) var(--space-4); }
   .ask-hero h1 { font-size: 1.75rem; }
-  .ask-hero .chip { width: 100%; }
   .answer, .emergency { padding: var(--space-4); }
   .answer-text { font-size: 1.1875rem; }
   .emergency-text { font-size: 1.5rem; }

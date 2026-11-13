@@ -6,7 +6,7 @@
 // The page only draws the lines, so these are replaced by the response's values.
 let EMERGENCY_MIN = 0.35;
 let IN_SCOPE_MIN = 0.25;
-let SIMILARITY_MIN = 0.45;
+let RELEVANCE_MIN = 0.47;
 const MAX_QUESTION_CHARS = 500;
 
 // What to tell the visitor for each error code the API can return.
@@ -55,8 +55,8 @@ const CODE_FOR_STATUS = { 422: "invalid_question", 429: "rate_limited", 502: "up
 const REASONS = {
   out_of_scope: (data) =>
     `The in-scope probability, ${score(data.judgments.in_scope)}, is under the ${score(IN_SCOPE_MIN)} line. Code declined without asking the generative model.`,
-  low_similarity: (data) =>
-    `The closest passage scored ${score(bestSimilarity(data.passages))} similarity, under the ${score(SIMILARITY_MIN)} line. Nothing relevant enough was found, so code declined without asking the generative model.`,
+  low_relevance: (data) =>
+    `The best passage scored ${score(bestRelevance(data.passages))} relevance, under the ${score(RELEVANCE_MIN)} line. Nothing relevant enough was found, so code declined without asking the generative model.`,
   not_in_handbook: () =>
     "Both checks passed, but the generative model reported that the passages do not answer the question. Code showed this fixed message instead.",
   refusal: () =>
@@ -114,6 +114,8 @@ async function ask(rawQuestion) {
   }
 
   lastQuestion = question;
+  // The examples have done their job once something is asked; the visitor can reopen them
+  $("examples").open = false;
   startLoading();
 
   let response;
@@ -141,7 +143,7 @@ async function ask(rawQuestion) {
     if (body.thresholds) {
       EMERGENCY_MIN = body.thresholds.emergency_min;
       IN_SCOPE_MIN = body.thresholds.in_scope_min;
-      SIMILARITY_MIN = body.thresholds.similarity_min;
+      RELEVANCE_MIN = body.thresholds.relevance_min;
     }
     showResult(body);
   }
@@ -155,15 +157,15 @@ function startLoading() {
   $("intro").hidden = true;
   $("results").hidden = true;
   $("hood").hidden = true;
+  $("hood-waiting").hidden = false;
 
   const status = $("status");
   status.classList.remove("sr-only");
   status.hidden = false;
+  $("status-text").textContent = "Judging the question and finding passages";
   const started = performance.now();
   const tick = () => {
-    const seconds = ((performance.now() - started) / 1000).toFixed(1);
-    $("status-text").textContent =
-      `Running the pipeline: judging the question and retrieving passages in parallel. ${seconds} s`;
+    $("status-time").textContent = `${((performance.now() - started) / 1000).toFixed(1)} s`;
   };
   tick();
   timer = setInterval(tick, 100);
@@ -174,6 +176,8 @@ function stopLoading() {
   clearInterval(timer);
   setControlsDisabled(false);
   $("status").hidden = true;
+  $("status-time").textContent = "";
+  $("hood-waiting").hidden = true;
 }
 
 // aria-disabled (not disabled) so a chip keeps keyboard focus while its question runs.
@@ -263,21 +267,21 @@ function showDecision(data) {
   $("decision").dataset.decision = data.decision;
   $("decision-word").textContent = words[data.decision] ?? data.decision;
   $("decision-why").textContent = data.decision === "answered"
-    ? "Not an emergency, in scope, and retrieval found a close enough passage, so code asked the generative model to write."
+    ? "Not an emergency, in scope, and retrieval found a relevant enough passage, so code asked the generative model to write."
     : explainReason(data);
 }
 
-// One row per passage: rank, source and similarity against the floor. Opening it shows the text.
+// One row per passage: rank, source and the reranker's relevance against the floor. Opening it shows the text.
 function showPassages(data) {
   const cited = new Set(data.answer.citations ?? []);
   $("evidence-note").textContent = data.decision === "answered"
-    ? "Closest in meaning to the question. The answer may only use these."
-    : "What retrieval found. Code declined, so none of it was used.";
+    ? "Vector search found the 10 nearest passages, and a reranker kept the 4 that best answer the question. Bars show that relevance score; the line is the floor. The answer may only use these."
+    : "What retrieval found, scored by the reranker against the floor. Code declined, so none of it was used.";
 
   const items = data.passages.map((passage) => {
     const classes = ["passage"];
     if (cited.has(passage.rank)) classes.push("is-cited");
-    if (passage.similarity >= SIMILARITY_MIN) classes.push("is-above");
+    if (passage.relevance >= RELEVANCE_MIN) classes.push("is-above");
     const item = el("li", classes.join(" "));
     item.id = `passage-${passage.rank}`;
 
@@ -290,19 +294,19 @@ function showPassages(data) {
     bar.setAttribute("aria-hidden", "true");
     const fill = el("span", "bar-fill");
     fill.style.display = "block";
-    fill.style.width = `${clamp01(passage.similarity) * 100}%`;
+    fill.style.width = `${clamp01(passage.relevance) * 100}%`;
     const marker = el("span", "bar-marker");
-    marker.style.left = `${SIMILARITY_MIN * 100}%`;
+    marker.style.left = `${RELEVANCE_MIN * 100}%`;
     bar.append(fill, marker);
 
     summary.append(
       el("span", "passage-rank", String(passage.rank)),
       source,
-      el("span", "passage-sim", score(passage.similarity)),
+      el("span", "passage-sim", score(passage.relevance)),
       bar,
     );
     summary.setAttribute("aria-label",
-      `Passage ${passage.rank}: ${passage.section}${passage.heading ? `, ${passage.heading}` : ""}. Similarity ${score(passage.similarity)}${cited.has(passage.rank) ? ", cited" : ""}.`);
+      `Passage ${passage.rank}: ${passage.section}${passage.heading ? `, ${passage.heading}` : ""}. Relevance ${score(passage.relevance)}, similarity ${score(passage.similarity)}${cited.has(passage.rank) ? ", cited" : ""}.`);
     details.append(summary, handbookText(passage.content));
     item.append(details);
     return item;
@@ -373,6 +377,7 @@ function citationButton(rank, label) {
       cite.setAttribute("aria-pressed", String(Number(cite.dataset.rank) === pinnedRank));
     });
     if (pinnedRank === rank) {
+      window.showHood?.();
       const passage = $(`passage-${rank}`);
       passage.querySelector("details").open = true;
       passage.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
@@ -428,8 +433,8 @@ function updateCharCount() {
   $("char-count").textContent = questionBox.value.length;
 }
 
-function bestSimilarity(passages) {
-  return Math.max(0, ...passages.map((passage) => passage.similarity));
+function bestRelevance(passages) {
+  return Math.max(0, ...passages.map((passage) => passage.relevance));
 }
 
 // Handbook passages are Markdown. This draws the two things they use, lists and **bold**,

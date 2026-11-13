@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.chunking import Chunk, chunk_markdown  # noqa: E402
+from app.chunking import Chunk, chunk_markdown, titled_text  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.db import get_db  # noqa: E402
 from app.retrieval import check_corpus_model, embed  # noqa: E402
@@ -21,9 +21,8 @@ EMBED_BATCH_SIZE = 32
 
 
 def embedding_text(chunk: Chunk) -> str:
-    """What gets embedded: the chunk with its titles on top, so a short passage keeps its topic."""
-    titles = [chunk.section_title] + ([chunk.heading] if chunk.heading else [])
-    return f"{': '.join(titles)}\n\n{chunk.content}"
+    """What gets embedded: the chunk with its titles on top, the same text the reranker reads."""
+    return titled_text(chunk.section_title, chunk.heading, chunk.content)
 
 
 async def ingest() -> None:

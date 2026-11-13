@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     voyage_api_key: str | None = None
     embedding_model: str = "voyage-4-lite"
     embedding_dimensions: int = 512
+    rerank_model: str = "rerank-2.5-lite"
 
     # Email for class token links. EMAIL_FROM is a sender on a domain verified in Resend,
     # for example "Family Clinic Assistant <tokens@example.com>"

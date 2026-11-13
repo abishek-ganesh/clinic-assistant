@@ -15,7 +15,10 @@ class Judgments(BaseModel):
 
 
 class Passage(BaseModel):
-    """One retrieved handbook chunk. rank starts at 1 and is the [n] the answer cites."""
+    """One retrieved handbook chunk. rank starts at 1 and is the [n] the answer cites.
+
+    similarity is the vector search score; relevance is the reranker's, which sets the order.
+    """
 
     rank: int
     section_slug: str
@@ -23,6 +26,7 @@ class Passage(BaseModel):
     heading: str | None
     content: str
     similarity: float
+    relevance: float
 
 
 class Prompt(BaseModel):

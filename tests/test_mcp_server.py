@@ -14,10 +14,11 @@ from starlette.requests import Request
 
 from app import mcp_server
 from app.models import AccessDecision, Passage, Slot
+from app.thresholds import RELEVANCE_MIN
 
 PASSAGE = Passage(
     rank=1, section_slug="hours", section="Hours and locations", heading="Saturday hours",
-    content="Open Saturdays from 9:00 am to 1:00 pm.", similarity=0.56649,
+    content="Open Saturdays from 9:00 am to 1:00 pm.", similarity=0.56649, relevance=0.87712,
 )  # fmt: skip
 SLOT = Slot(
     slot_id="slot-1", provider="Dr. Patel", visit_type="physical",
@@ -107,6 +108,7 @@ async def test_find_passages_returns_the_fields_a_model_needs(wired):
         "section": "Hours and locations",
         "heading": "Saturday hours",
         "content": "Open Saturdays from 9:00 am to 1:00 pm.",
+        "relevance": 0.877,
         "similarity": 0.566,
     }
 
@@ -218,6 +220,8 @@ def test_initialize_and_tools_list_are_not_counted(wired, client):
     for tool in tools.values():
         assert tool["annotations"]["readOnlyHint"] is True
         assert len(tool["description"]) > 100
+    # The model is told how to read the score, with the same floor the pipeline uses
+    assert f"relevance under {RELEVANCE_MIN}" in tools["search_handbook"]["description"]
 
     assert wired["ips"] == []
     assert wired["logged"] == []
@@ -231,6 +235,7 @@ def test_search_handbook_call_returns_passages_and_logs(wired, client):
             "section": "Hours and locations",
             "heading": "Saturday hours",
             "content": "Open Saturdays from 9:00 am to 1:00 pm.",
+            "relevance": 0.877,
             "similarity": 0.566,
         }
     ]

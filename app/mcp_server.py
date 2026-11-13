@@ -26,7 +26,7 @@ from app.access import DENIALS, authorize_demo, client_ip, hash_ip, log_usage
 from app.config import get_settings
 from app.models import Slot
 from app.retrieval import retrieve
-from app.thresholds import MAX_QUESTION_CHARS
+from app.thresholds import MAX_QUESTION_CHARS, RELEVANCE_MIN
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +49,12 @@ mcp = MCPServer(
 
 
 class HandbookPassage(BaseModel):
-    """One handbook passage as a tool result. similarity runs from 0 (unrelated) to 1."""
+    """One handbook passage as a tool result. Both scores run from 0 (unrelated) to 1."""
 
     section: str
     heading: str | None
     content: str
+    relevance: float
     similarity: float
 
 
@@ -112,13 +113,14 @@ async def metered[T](tool: str, request: Request | None, work: Callable[[], Awai
 
 
 async def find_passages(question: str) -> list[HandbookPassage]:
-    """The handbook passages closest in meaning to the question, best first."""
+    """The handbook passages most relevant to the question, best first."""
     passages = await retrieve(question)
     return [
         HandbookPassage(
             section=passage.section,
             heading=passage.heading,
             content=passage.content,
+            relevance=round(passage.relevance, 3),
             similarity=round(passage.similarity, 3),
         )
         for passage in passages
@@ -133,11 +135,24 @@ async def find_slots(visit_type: str | None, on_or_after: date | None) -> list[S
     return await check_availability(visit_type=visit_type, on_or_after=on_or_after)
 
 
-# The docstrings and Field descriptions below are sent to the client as the tool's description
+# The descriptions and Field descriptions below are sent to the client as the tool's description
 # and input schema. They are the only thing the model reads when deciding which tool to call.
+# search_handbook's is built here rather than in a docstring so it can quote RELEVANCE_MIN.
+SEARCH_HANDBOOK_DESCRIPTION = f"""Search the Family Clinic patient handbook: hours, appointments,
+refills, billing, insurance and other clinic policies.
+
+Returns the few passages most relevant to the question, best first, each with its section,
+heading and text. relevance (0 to 1) is how well the passage answers the question and sets the
+order; similarity is the raw search score. A best relevance under {RELEVANCE_MIN} means the
+handbook probably does not cover the question: say so instead of guessing. Answer only from
+the returned text and name the section you used. Read-only."""
 
 
-@mcp.tool(title="Search the clinic handbook", annotations=READ_ONLY)
+@mcp.tool(
+    title="Search the clinic handbook",
+    description=SEARCH_HANDBOOK_DESCRIPTION,
+    annotations=READ_ONLY,
+)
 async def search_handbook(
     question: Annotated[
         str,
@@ -149,14 +164,7 @@ async def search_handbook(
     ],
     ctx: Context,
 ) -> list[HandbookPassage]:
-    """Search the Family Clinic patient handbook: hours, appointments, refills, billing,
-    insurance and other clinic policies.
-
-    Returns the few passages closest in meaning to the question, best first, each with its
-    section, heading, text and a similarity score from 0 to 1. A best score under about 0.45
-    means the handbook probably does not cover the question: say so instead of guessing.
-    Answer only from the returned text and name the section you used. Read-only.
-    """
+    """Handbook search for MCP clients. Its description is SEARCH_HANDBOOK_DESCRIPTION."""
     return await metered(
         "search_handbook", ctx.request_context.request, lambda: find_passages(question)
     )

@@ -28,13 +28,35 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  min-height: 22rem;
+  min-height: 17rem;
   max-height: 34rem;
   padding: var(--space-5);
   overflow-y: auto;
 }
 
 .chat-empty { color: var(--slate); font-size: 0.9375rem; }
+
+/* Before the first message: a short prompt centered in the empty conversation */
+.chat-log .chat-empty {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 22rem;
+  text-align: center;
+}
+.chat-empty-icon {
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-2);
+  border-radius: 50%;
+  background: var(--tint);
+  color: var(--navy);
+}
+.chat-empty-title { color: var(--ink); font-family: var(--font-display); font-weight: 600; font-size: 1.125rem; }
 
 .chat-foot {
   display: flex;
@@ -79,6 +101,16 @@
 }
 /* A turn written by code (a proposal, a fixed message) is dashed, like a declined answer */
 .bubble-code { background: var(--white); border: 1.5px dashed var(--line); }
+
+/* While the server works: a spinner, what it is doing, and the seconds so far */
+.bubble-waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--slate);
+  white-space: normal;
+}
+.bubble-waiting .spinner { border-color: var(--line); border-top-color: var(--navy); }
 
 /* Cards inside the conversation: the pending proposal and a finished booking */
 
@@ -146,8 +178,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  max-height: 36rem;
-  overflow-y: auto;
 }
 .trace-log .chat-empty { color: var(--ins-muted); }
 
@@ -201,9 +231,8 @@
 
 @media (max-width: 40rem) {
   .chat-head, .chat-log, .chat-foot { padding-left: var(--space-4); padding-right: var(--space-4); }
-  .chat-log { min-height: 9rem; }
+  .chat-log { min-height: 13rem; }
   .bubble { max-width: 92%; }
-  .chip { width: 100%; }
   .proposal-actions > * { flex: 1; }
   .booked-code-box { align-items: flex-start; }
   .tool-io { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
